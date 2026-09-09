@@ -590,6 +590,11 @@ const char *GetHomeDirectory(void)
 		return cdogs_homepath;
 	}
 
+#ifdef __VITA__
+#undef SEP
+	// Writable state next to the development data tree. Do not require HOME.
+	return "ux0:data/cdogs-sdl/";
+#else
 	p = getenv(HOME_DIR_ENV);
 	if (p != NULL && strlen(p) != 0)
 	{
@@ -607,6 +612,7 @@ const char *GetHomeDirectory(void)
 		"# It is suggested you get a better shell. :D                 #\n",
 		"##############################################################\n");
 	return "";
+#endif
 }
 
 /* GetConfigFilePath()
@@ -616,12 +622,14 @@ const char *GetHomeDirectory(void)
 char cfpath[CDOGS_PATH_MAX];
 const char *GetConfigFilePath(const char *name)
 {
+#ifndef __VITA__
 	const char *xdgConfigDir = getenv("XDG_CONFIG_HOME");
 	if (xdgConfigDir != NULL)
 	{
 		sprintf(cfpath, "%s/cdogs-sdl/", xdgConfigDir);
 	}
 	else
+#endif
 	{
 		const char *homedir = GetHomeDirectory();
 		strcpy(cfpath, homedir);

@@ -419,6 +419,25 @@ static bool IsAbsolutePath(const char *path)
 {
 #ifdef _WIN32
 	return strlen(path) > 1 && path[1] == ':';
+#elif defined(__VITA__)
+	// Vita device paths ("ux0:...", "app0:...", "host0:...") are absolute.
+	// Device IDs are a short alphanumeric prefix followed by ':'.
+	int i = 0;
+	while (path[i] != '\0' && path[i] != ':' && i < 8)
+	{
+		const char c = path[i];
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			  (c >= '0' && c <= '9')))
+		{
+			break;
+		}
+		i++;
+	}
+	if (i >= 3 && path[i] == ':')
+	{
+		return true;
+	}
+	return path[0] == '/';
 #else
 	return path[0] == '/';
 #endif
