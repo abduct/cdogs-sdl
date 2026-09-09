@@ -372,9 +372,7 @@ static int zip_archive_extract(mz_zip_archive *zip_archive, const char *dir,
         && info.m_external_attr &
                (0x20 << 24)) { // and has sym link attribute (0x80 is file, 0x40
                                // is directory)
-#if defined(_WIN32) || defined(__WIN32__) || defined(_MSC_VER) ||              \
-    defined(__MINGW32__)
-#else
+#if defined(__unix__) || defined(__APPLE__)
       if (info.m_uncomp_size > MZ_ZIP_MAX_ARCHIVE_FILENAME_SIZE ||
           !mz_zip_reader_extract_to_mem_no_alloc(zip_archive, i, symlink_to,
                                                  MZ_ZIP_MAX_ARCHIVE_FILENAME_SIZE, 0, NULL, 0)) {

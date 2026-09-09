@@ -41,16 +41,20 @@ set(LIBRARY_OUTPUT_PATH ${libDir})
 
 add_library(yajl_s STATIC ${SRCS} ${HDRS} ${PUB_HDRS})
 
-add_library(yajl SHARED ${SRCS} ${HDRS} ${PUB_HDRS})
+if(NOT VITA)
+	add_library(yajl SHARED ${SRCS} ${HDRS} ${PUB_HDRS})
+endif()
 
+if(NOT VITA)
 #### setup shared library version number
 set_target_properties(yajl PROPERTIES
                       DEFINE_SYMBOL YAJL_SHARED
                       SOVERSION ${YAJL_MAJOR}
                       VERSION ${YAJL_MAJOR}.${YAJL_MINOR}.${YAJL_MICRO})
+endif()
 
 #### ensure a .dylib has correct absolute installation paths upon installation
-if(APPLE)
+if(APPLE AND NOT VITA)
   set_target_properties(yajl PROPERTIES
                         INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 endif()

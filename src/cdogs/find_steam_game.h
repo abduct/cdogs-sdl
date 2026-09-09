@@ -76,7 +76,7 @@ extern "C"
 			RegCloseKey(pathkey);
 		}
 	}
-#else
+#elif defined(__APPLE__) || defined(__linux__) || defined(__unix__)
 
 #include <pwd.h>
 #include <unistd.h>
@@ -186,7 +186,7 @@ extern "C"
 			fclose(f);
 			out[0] = '\0';
 		}
-#else
+#elif defined(__APPLE__) || defined(__linux__) || defined(__unix__)
 	// Look at $HOME/.local/share/Steam/steamapps/common/
 	struct passwd *pw = getpwuid(getuid());
 	const char *homedir = pw->pw_dir;

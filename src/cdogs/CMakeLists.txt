@@ -251,6 +251,6 @@ target_link_libraries(cdogs
 	json
 	SDL_joystickbuttonnames
 	yajl_s
-	SDL2::SDL2
 	SDL2_mixer::SDL2_mixer
+	SDL2::SDL2
 	${ENet_LIBRARIES})

@@ -29,7 +29,9 @@
 #include <stdarg.h>
 #include <time.h>
 
+#ifndef __VITA__
 #include "rlutil/rlutil.h"
+#endif
 #include "utils.h"
 
 FILE *gLogFile;
@@ -114,7 +116,9 @@ LogLevel StrLogLevel(const char *s)
 #endif
 void LogInit(void)
 {
+#ifndef __VITA__
 	saveStreamDefaultColor(stderr);
+#endif
 }
 void LogOpenFile(const char *filename)
 {
@@ -134,6 +138,7 @@ void LogTerminate(void)
 	}
 }
 
+#ifndef __VITA__
 static void LogSetColor(const int color)
 {
 #ifdef __EMSCRIPTEN__
@@ -143,9 +148,13 @@ static void LogSetColor(const int color)
 	setStreamColor(stderr, color);
 #endif
 }
+#endif
 
 static void LogSetLevelColor(const LogLevel l)
 {
+#ifdef __VITA__
+	UNUSED(l);
+#else
 	switch (l)
 	{
 	case LL_TRACE: LogSetColor(GREY); break;
@@ -155,22 +164,29 @@ static void LogSetLevelColor(const LogLevel l)
 	case LL_ERROR: LogSetColor(RED); break;
 	default: CASSERT(false, "Unknown log level"); break;
 	}
+#endif
 }
 static void LogSetModuleColor(void)
 {
+#ifndef __VITA__
 	LogSetColor(LIGHTBLUE);
+#endif
 }
 static void LogSetFileColor(void)
 {
+#ifndef __VITA__
 	LogSetColor(BROWN);
+#endif
 }
 static void LogSetFuncColor(void)
 {
+#ifndef __VITA__
 	LogSetColor(CYAN);
+#endif
 }
 static void LogResetColor(void)
 {
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__VITA__)
 	resetStreamColor(stderr);
 #endif
 }

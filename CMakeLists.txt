@@ -41,7 +41,26 @@ if(CMAKE_CROSSCOMPILING)
 	if(CMAKE_C_COMPILER MATCHES ".*gcw0-linux.*")
 		set(GCW0 1)
 		set(BUILD_EDITOR OFF)
+	elseif(CMAKE_C_COMPILER MATCHES "arm-vita-eabi" OR VITA OR BUILD_VITA)
+		# VitaSDK toolchain also sets VITA/BUILD_VITA
+		set(VITA 1)
+		set(BUILD_EDITOR OFF)
+		set(BUILD_TESTING OFF)
 	endif()
+endif()
+
+if(VITA)
+	if(NOT DEFINED VITASDK AND DEFINED ENV{VITASDK})
+		set(VITASDK "$ENV{VITASDK}")
+	endif()
+	if(NOT DEFINED VITASDK OR NOT EXISTS "${VITASDK}/share/vita.cmake")
+		message(FATAL_ERROR "Vita build requires VITASDK (vita.cmake not found)")
+	endif()
+	include("${VITASDK}/share/vita.cmake" REQUIRED)
+	add_definitions(-D__VITA__)
+	set(CMAKE_C_STANDARD 17)
+	set(CMAKE_C_STANDARD_REQUIRED ON)
+	set(CMAKE_C_EXTENSIONS ON)
 endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
@@ -70,6 +89,16 @@ find_package(Nanopb 0.4.5...<1.0.0 REQUIRED)
 find_package(SDL2 REQUIRED)
 message("SDL2 include dir: ${SDL2_INCLUDE_DIRS}")
 find_package(SDL2_mixer REQUIRED)
+if(VITA AND TARGET SDL2_mixer::SDL2_mixer-static AND NOT TARGET SDL2_mixer::SDL2_mixer)
+	# VitaSDK ships a static-only mixer package; keep the project's imported-target name.
+	if(CMAKE_VERSION VERSION_LESS "3.18")
+		add_library(SDL2_mixer::SDL2_mixer INTERFACE IMPORTED)
+		set_target_properties(SDL2_mixer::SDL2_mixer PROPERTIES
+			INTERFACE_LINK_LIBRARIES "SDL2_mixer::SDL2_mixer-static")
+	else()
+		add_library(SDL2_mixer::SDL2_mixer ALIAS SDL2_mixer::SDL2_mixer-static)
+	endif()
+endif()
 if(BUILD_EDITOR)
 	find_package(OpenGL REQUIRED)
 endif()
@@ -118,20 +147,30 @@ else()
         # Probably GCC...
 		# Allow larger inline functions, required by tinydir
 		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --param max-inline-insns-single=1000")
-        add_definitions(-freg-struct-return -std=gnu99)
+		if(VITA)
+			# GNU17 via CMAKE_C_STANDARD; skip x86-specific -freg-struct-return
+		else()
+			add_definitions(-freg-struct-return -std=gnu99)
+		endif()
 		if(NOT APPLE AND NOT BEOS AND NOT HAIKU)
 			add_definitions(-Wshadow)
 		endif()
 		if (CMAKE_C_COMPILER_VERSION VERSION_GREATER 7)
-			add_definitions(
-				-C
-				-Wno-error=format-overflow # TODO: should probably just make sure buffer sizes are appropriate
-				-Wno-error=stringop-overflow # TODO: update nuklear
-			)
+			if(NOT VITA)
+				add_definitions(
+					-C
+					-Wno-error=format-overflow # TODO: should probably just make sure buffer sizes are appropriate
+					-Wno-error=stringop-overflow # TODO: update nuklear
+				)
+			endif()
 		endif()
 	endif()
 	if(NOT BEOS AND NOT HAIKU)
-		add_definitions(-Winline -Werror)
+		if(VITA)
+			add_definitions(-Winline)
+		else()
+			add_definitions(-Winline -Werror)
+		endif()
 		set(EXTRA_LIBRARIES "m")
 	endif()
 endif()

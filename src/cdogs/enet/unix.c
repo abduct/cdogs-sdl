@@ -8,7 +8,6 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/ioctl.h>
 #include <sys/time.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -50,6 +49,8 @@
 
 #ifdef HAS_FCNTL
 #include <fcntl.h>
+#else
+#include <sys/ioctl.h>
 #endif
 
 #ifdef HAS_POLL
@@ -294,7 +295,11 @@ enet_socket_get_address (ENetSocket socket, ENetAddress * address)
 int 
 enet_socket_listen (ENetSocket socket, int backlog)
 {
+#ifndef SOMAXCONN
+    return listen (socket, backlog < 1 ? 1 : backlog);
+#else
     return listen (socket, backlog < 0 ? SOMAXCONN : backlog);
+#endif
 }
 
 ENetSocket
