@@ -96,6 +96,12 @@
 #include <emscripten.h>
 #endif
 
+#ifdef __VITA__
+#include <psp2/types.h>
+/* A/B test: default Vita main-thread stack is too small for MapAddDoorGroup. */
+__attribute__((used)) const SceSize sceUserMainThreadStackSize = 1024 * 1024;
+#endif
+
 int main(int argc, char *argv[])
 {
 #if defined(_MSC_VER) && !defined(NDEBUG)
