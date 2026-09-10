@@ -620,7 +620,7 @@ Config ConfigDefault(void)
 	ConfigGroupAdd(
 		&gfx, ConfigNewBool(
 				  "Fullscreen",
-#ifdef __GCWZERO__
+#if defined(__VITA__) || defined(__GCWZERO__)
 				  true
 #else
 				  false
@@ -628,20 +628,46 @@ Config ConfigDefault(void)
 				  ));
 
 	ConfigGroupAdd(
-		&gfx, ConfigNewInt("WindowWidth", 640, 320, 4096, 0, NULL, NULL));
+		&gfx, ConfigNewInt(
+				  "WindowWidth",
+#ifdef __VITA__
+				  960
+#else
+				  640
+#endif
+				  ,
+				  320, 4096, 0, NULL, NULL));
 	ConfigGroupAdd(
-		&gfx, ConfigNewInt("WindowHeight", 480, 200, 2160, 0, NULL, NULL));
+		&gfx, ConfigNewInt(
+				  "WindowHeight",
+#ifdef __VITA__
+				  544
+#else
+				  480
+#endif
+				  ,
+				  200, 2160, 0, NULL, NULL));
 	ConfigGroupAdd(
 		&gfx, ConfigNewInt(
 				  "ScaleFactor",
-#ifdef __GCWZERO__
+#ifdef __VITA__
+				  2
+#elif defined(__GCWZERO__)
 				  1
 #else
 				  2
 #endif
 				  ,
 				  1, 16, 1, NULL, NULL));
-	ConfigGroupAdd(&gfx, ConfigNewBool("DOSPAR", true));
+	ConfigGroupAdd(
+		&gfx, ConfigNewBool(
+				  "DOSPAR",
+#ifdef __VITA__
+				  false
+#else
+				  true
+#endif
+				  ));
 	ConfigGroupAdd(
 		&gfx, ConfigNewInt("ShakeMultiplier", 1, 0, 10, 1, NULL, NULL));
 	ConfigGroupAdd(&gfx, ConfigNewBool("ShowHUD", true));
