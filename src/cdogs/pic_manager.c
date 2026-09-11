@@ -27,6 +27,7 @@
 */
 #include "pic_manager.h"
 
+#include <stdbool.h>
 #include <tinydir/tinydir.h>
 
 #include "files.h"
@@ -57,7 +58,15 @@ void PicManagerInit(PicManager *pm)
 
 static NamedPic *AddNamedPic(map_t pics, const char *name, const Pic *p);
 static NamedSprites *AddNamedSprites(map_t sprites, const char *name);
-static void AfterAdd(PicManager *pm);
+static void PicManagerRebuildStyles(PicManager *pm);
+/*
+ * During PicManagerLoad(), defer style discovery until both graphics/ and
+ * graphics_hd/ are fully loaded. RebuildStyles clears and rescans all
+ * style lists from scratch, so one pass after the batch matches the
+ * previous per-PNG rebuild final state. Non-bulk PicManagerAdd callers
+ * still rebuild immediately (sDeferStyleRebuild remains false).
+ */
+static bool sDeferStyleRebuild;
 static void PicManagerAdd(
 	map_t pics, map_t sprites, const char *name, SDL_Surface *imageIn,
 	const bool isHD)
@@ -176,7 +185,10 @@ static void PicManagerAdd(
 	SDL_UnlockSurface(image);
 	SDL_FreeSurface(image);
 
-	AfterAdd(&gPicManager);
+	if (!sDeferStyleRebuild)
+	{
+		PicManagerRebuildStyles(&gPicManager);
+	}
 }
 
 void PicManagerLoadDir(
@@ -248,10 +260,13 @@ bail:
 void PicManagerLoad(PicManager *pm)
 {
 	char buf[CDOGS_PATH_MAX];
+	sDeferStyleRebuild = true;
 	GetDataFilePath(buf, GRAPHICS_DIR);
 	PicManagerLoadDir(pm, buf, NULL, pm->pics, pm->sprites, false);
 	GetDataFilePath(buf, GRAPHICS_HD_DIR);
 	PicManagerLoadDir(pm, buf, NULL, pm->pics, pm->sprites, true);
+	sDeferStyleRebuild = false;
+	PicManagerRebuildStyles(pm);
 }
 
 static void FindStylePics(
@@ -267,7 +282,7 @@ static int MaybeAddTilePicName(any_t data, any_t item);
 static int MaybeAddExitPicName(any_t data, any_t item);
 static int MaybeAddKeyPicName(any_t data, any_t item);
 static int MaybeAddDoorPicName(any_t data, any_t item);
-static void AfterAdd(PicManager *pm)
+static void PicManagerRebuildStyles(PicManager *pm)
 {
 	FindStyleSprites(
 		pm, &pm->headPartNames[HEAD_PART_HAIR], MaybeAddHairSpriteName);
@@ -454,7 +469,7 @@ void PicManagerClearCustom(PicManager *pm)
 {
 	hashmap_clear(pm->customPics, NamedPicDestroy);
 	hashmap_clear(pm->customSprites, NamedSpritesDestroy);
-	AfterAdd(pm);
+	PicManagerRebuildStyles(pm);
 }
 static void PicManagerUnload(PicManager *pm)
 {
@@ -462,7 +477,7 @@ static void PicManagerUnload(PicManager *pm)
 	hashmap_clear(pm->sprites, NamedSpritesDestroy);
 	hashmap_clear(pm->customPics, NamedPicDestroy);
 	hashmap_clear(pm->customSprites, NamedSpritesDestroy);
-	AfterAdd(pm);
+	PicManagerRebuildStyles(pm);
 }
 static void StyleNamesDestroy(CArray *a)
 {
@@ -633,7 +648,7 @@ static void PicManagerGenerateMaskedPic(
 	}
 	AddNamedPic(pm->customPics, maskedName, &p);
 
-	AfterAdd(pm);
+	PicManagerRebuildStyles(pm);
 }
 void PicManagerGenerateMaskedStylePic(
 	PicManager *pm, const char *name, const char *style, const char *type,
@@ -680,7 +695,7 @@ const NamedSprites *PicManagerGetCharSprites(
 	}
 	CArrayPushBack(&nsp->pics, &p);
 	CA_FOREACH_END()
-	AfterAdd(pm);
+	PicManagerRebuildStyles(pm);
 	return nsp;
 }
 
