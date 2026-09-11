@@ -140,42 +140,59 @@ static int GetNthDayOfWeek(int y, const int m, const int n, const int wday)
 }
 static const char *GetFestiveHat(void)
 {
-	static struct tm *t = NULL;
-	if (t == NULL)
-	{
-		time_t now = time(NULL);
-		t = localtime(&now);
-	}
 	if (ConfigGetBool(&gConfig, "Game.NoFestiveHats"))
 	{
 		return NULL;
 	}
-	if (t->tm_mon + 1 == 1 && t->tm_mday == 1)
-		return "party";
-	if (t->tm_mon + 1 == 3 && t->tm_mday == 17)
-		return "leprechaun";
-	if (t->tm_mon + 1 == 5 && t->tm_mday == 5)
-		return "sombrero";
-	if (t->tm_mon + 1 == 10 && t->tm_mday == 31)
-		return "witch";
-	if (t->tm_mon + 1 == 12 && t->tm_mday == 25)
-		return "santa";
-	int easterFriM, easterFriD, easterMonM, easterMonD;
-	GetEasterDates(
-		t->tm_year + 1900, &easterFriM, &easterFriD, &easterMonM, &easterMonD);
-	const bool isAfterEasterFri =
-		t->tm_mon + 1 > easterFriM ||
-		(t->tm_mon + 1 == easterFriM && t->tm_mday >= easterFriD);
-	const bool isBeforeEasterMon =
-		t->tm_mon + 1 < easterMonM ||
-		(t->tm_mon + 1 == easterMonM && t->tm_mday <= easterMonD);
-	if (isAfterEasterFri && isBeforeEasterMon)
-		return "bunny";
-	if (t->tm_mon + 1 == 11 &&
-		t->tm_mday ==
-			GetNthDayOfWeek(t->tm_year + 1900, 11, 4, 4)) // 4th Thu of Nov
-		return "capotain";
-	return NULL;
+
+	const time_t now = time(NULL);
+	const struct tm *local = localtime(&now);
+	const int year = local->tm_year + 1900;
+	const int month = local->tm_mon + 1;
+	const int day = local->tm_mday;
+
+	static bool sCached = false;
+	static int sYear;
+	static int sMonth;
+	static int sDay;
+	static const char *sHat = NULL;
+	if (sCached && year == sYear && month == sMonth && day == sDay)
+	{
+		return sHat;
+	}
+
+	const char *hat = NULL;
+	if (month == 1 && day == 1)
+		hat = "party";
+	else if (month == 3 && day == 17)
+		hat = "leprechaun";
+	else if (month == 5 && day == 5)
+		hat = "sombrero";
+	else if (month == 10 && day == 31)
+		hat = "witch";
+	else if (month == 12 && day == 25)
+		hat = "santa";
+	else
+	{
+		int easterFriM, easterFriD, easterMonM, easterMonD;
+		GetEasterDates(
+			year, &easterFriM, &easterFriD, &easterMonM, &easterMonD);
+		const bool isAfterEasterFri =
+			month > easterFriM || (month == easterFriM && day >= easterFriD);
+		const bool isBeforeEasterMon =
+			month < easterMonM || (month == easterMonM && day <= easterMonD);
+		if (isAfterEasterFri && isBeforeEasterMon)
+			hat = "bunny";
+		else if (month == 11 && day == GetNthDayOfWeek(year, 11, 4, 4))
+			hat = "capotain";
+	}
+
+	sHat = hat;
+	sYear = year;
+	sMonth = month;
+	sDay = day;
+	sCached = true;
+	return hat;
 }
 
 static direction_e GetLegDirAndFrame(

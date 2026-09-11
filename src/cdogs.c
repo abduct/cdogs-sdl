@@ -98,7 +98,10 @@
 
 #ifdef __VITA__
 #include <psp2/types.h>
-/* A/B test: default Vita main-thread stack is too small for MapAddDoorGroup. */
+/*
+ * C-Dogs has large stack frames in map/event generation; provide
+ * additional main-thread stack space on Vita.
+ */
 __attribute__((used)) const SceSize sceUserMainThreadStackSize = 1024 * 1024;
 #endif
 
