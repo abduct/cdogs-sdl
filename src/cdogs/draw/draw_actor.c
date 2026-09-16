@@ -367,10 +367,8 @@ static ActorPics GetUnorderedPics(
 	ActorPics pics;
 	memset(&pics, 0, sizeof pics);
 
-	pics.Sprites = c->Class->Sprites;
-
 	// Dummy return to handle invalid character class
-	if (c->Class == NULL)
+	if (c == NULL || c->Class == NULL)
 	{
 		pics.IsDead = true;
 		pics.IsDying = true;
@@ -378,6 +376,8 @@ static ActorPics GetUnorderedPics(
 		pics.OrderedPics[0] = pics.Body;
 		return pics;
 	}
+
+	pics.Sprites = c->Class->Sprites;
 
 	pics.ShadowMask = shadowMask;
 	if (mask != NULL)

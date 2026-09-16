@@ -71,7 +71,7 @@ extern CArray gPlayerDatas; // of PlayerData
 #define MAX_LOCAL_PLAYERS 4
 
 void PlayerDataInit(CArray *p);
-void PlayerDataAddOrUpdate(const NPlayerData pd);
+void PlayerDataAddOrUpdate(const NPlayerData *pd);
 void PlayerRemove(const int uid);
 NPlayerData PlayerDataDefault(const int idx);
 NPlayerData PlayerDataMissionReset(const PlayerData *p);

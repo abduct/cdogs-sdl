@@ -126,5 +126,9 @@ void LogTerminate(void);
 
 void LogLine(
 	FILE *stream, const LogModule m, const LogLevel l, const char *filename,
-	const int line, const char *function, const char *fmt, ...);
+	const int line, const char *function, const char *fmt, ...)
+#if defined(__GNUC__)
+	__attribute__((format(printf, 7, 8)))
+#endif
+	;
 void LogFlush(FILE *stream);

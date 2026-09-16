@@ -28,6 +28,7 @@
 */
 #include "net_server.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "proto/nanopb/pb_encode.h"
@@ -41,9 +42,11 @@
 #include "handle_game_events.h"
 #include "log.h"
 #include "los.h"
+#include "mission.h"
 #include "pickup.h"
 #include "player.h"
 #include "sys_config.h"
+#include "tile_class.h"
 #include "utils.h"
 
 NetServer gNetServer;
@@ -51,6 +54,7 @@ NetServer gNetServer;
 void NetServerInit(NetServer *n)
 {
 	memset(n, 0, sizeof *n);
+	n->listen = ENET_SOCKET_NULL;
 }
 void NetServerTerminate(NetServer *n)
 {
@@ -67,18 +71,39 @@ void NetServerOpen(NetServer *n, const uint16_t port)
 {
 	if (n->server)
 	{
+		LOG(LM_NET, LL_INFO,
+			"NetServerOpen: already open (listenPort=%u enetPort=%u)",
+			(unsigned)port, (unsigned)n->server->address.port);
 		return;
 	}
+	/* Drop any stale discovery listener left from a prior partial attempt */
+	if (n->listen != ENET_SOCKET_NULL)
+	{
+		enet_socket_destroy(n->listen);
+		n->listen = ENET_SOCKET_NULL;
+	}
+
+	LOG(LM_NET, LL_INFO, "NetServerOpen: opening (UDP listenPort=%u)",
+		(unsigned)port);
 
 	n->server = HostOpen();
 	if (n->server == NULL)
 	{
+		LOG(LM_NET, LL_ERROR, "NetServerOpen: ENet host create failed");
 		return;
 	}
+	LOG(LM_NET, LL_INFO, "NetServerOpen: ENet host port=%u",
+		(unsigned)n->server->address.port);
 
 	// Start listen socket, to respond to UDP scans
 	if (!ListenSocketTryOpen(&n->listen, port))
 	{
+		LOG(LM_NET, LL_ERROR,
+			"NetServerOpen: UDP discovery listen socket failed (port=%u)",
+			(unsigned)port);
+		enet_host_destroy(n->server);
+		n->server = NULL;
+		n->listen = ENET_SOCKET_NULL;
 		return;
 	}
 
@@ -90,6 +115,9 @@ void NetServerOpen(NetServer *n, const uint16_t port)
 		LOG(LM_NET, LL_WARN, "Failed to get hostname");
 		n->hostname[0] = '\0';
 	}
+	LOG(LM_NET, LL_INFO,
+		"NetServerOpen: ready hostname='%s' listenPort=%u enetPort=%u",
+		n->hostname, (unsigned)port, (unsigned)n->server->address.port);
 }
 static ENetHost *HostOpen(void)
 {
@@ -117,12 +145,19 @@ static bool ListenSocketTryOpen(ENetSocket *listen, const enet_uint16 port)
 	*listen = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
 	if (*listen == ENET_SOCKET_NULL)
 	{
-		LOG(LM_NET, LL_ERROR, "Failed to create socket");
+		LOG(LM_NET, LL_ERROR,
+			"listen: socket create failed errno=%d (%s)", errno,
+			strerror(errno));
 		return false;
 	}
+	LOG(LM_NET, LL_INFO, "listen: socket created fd=%d", (int)*listen);
 	if (enet_socket_set_option(*listen, ENET_SOCKOPT_REUSEADDR, 1) != 0)
 	{
-		LOG(LM_NET, LL_ERROR, "Failed to enable reuse address");
+		LOG(LM_NET, LL_ERROR,
+			"listen: SO_REUSEADDR failed errno=%d (%s)", errno,
+			strerror(errno));
+		enet_socket_destroy(*listen);
+		*listen = ENET_SOCKET_NULL;
 		return false;
 	}
 	ENetAddress addr;
@@ -130,12 +165,18 @@ static bool ListenSocketTryOpen(ENetSocket *listen, const enet_uint16 port)
 	addr.port = port;
 	if (enet_socket_bind(*listen, &addr) != 0)
 	{
-		LOG(LM_NET, LL_ERROR, "failed to bind listen socket");
+		LOG(LM_NET, LL_ERROR,
+			"listen: bind 0.0.0.0:%u failed errno=%d (%s)", (unsigned)port,
+			errno, strerror(errno));
+		enet_socket_destroy(*listen);
+		*listen = ENET_SOCKET_NULL;
 		return false;
 	}
 	if (enet_socket_get_address(*listen, &addr) != 0)
 	{
 		LOG(LM_NET, LL_ERROR, "cannot get listen socket address");
+		enet_socket_destroy(*listen);
+		*listen = ENET_SOCKET_NULL;
 		return false;
 	}
 	LOG(LM_NET, LL_INFO, "listening for scans on port %u", addr.port);
@@ -152,8 +193,13 @@ void NetServerClose(NetServer *n)
 			enet_peer_disconnect_now(peer, 0);
 		}
 		enet_host_destroy(n->server);
+		n->server = NULL;
 	}
-	n->server = NULL;
+	if (n->listen != ENET_SOCKET_NULL)
+	{
+		enet_socket_destroy(n->listen);
+		n->listen = ENET_SOCKET_NULL;
+	}
 }
 
 static void PollListener(NetServer *n);
@@ -178,9 +224,12 @@ void NetServerPoll(NetServer *n)
 		check = enet_host_service(n->server, &event, 0);
 		if (check < 0)
 		{
+			const int saved_errno = errno;
 			fprintf(stderr, "Host check event failure\n");
-			enet_host_destroy(n->server);
-			n->server = NULL;
+			LOG(LM_NET, LL_ERROR,
+				"enet_host_service failed (%d) errno=%d (%s)",
+				check, saved_errno, strerror(saved_errno));
+			NetServerClose(n);
 			return;
 		}
 		else if (check > 0)
@@ -229,11 +278,18 @@ static void PollListener(NetServer *n)
 	const int recvlen = enet_socket_receive(n->listen, &addr, &recvbuf, 1);
 	if (recvlen <= 0)
 	{
+		if (recvlen < 0 && errno != EWOULDBLOCK && errno != EAGAIN)
+		{
+			LOG(LM_NET, LL_ERROR,
+				"listen: recvfrom failed recvlen=%d errno=%d (%s)", recvlen,
+				errno, strerror(errno));
+		}
 		return;
 	}
 	char addrbuf[256];
 	enet_address_get_host_ip(&addr, addrbuf, sizeof addrbuf);
-	LOG(LM_NET, LL_DEBUG, "listener received from %s:%u", addrbuf, addr.port);
+	LOG(LM_NET, LL_INFO, "listen: scan request from %s:%u (%d byte)", addrbuf,
+		addr.port, recvlen);
 	// Reply to scanner client with our server host/address
 	NServerInfo sinfo;
 	sinfo.ProtocolVersion = NET_PROTOCOL_VERSION;
@@ -255,11 +311,19 @@ static void PollListener(NetServer *n)
 	CASSERT(status, "Failed to encode pb");
 	recvbuf.data = encbuf;
 	recvbuf.dataLength = stream.bytes_written;
-	if (enet_socket_send(n->listen, &addr, &recvbuf, 1) !=
-		(int)recvbuf.dataLength)
+	const int sent = enet_socket_send(n->listen, &addr, &recvbuf, 1);
+	if (sent != (int)recvbuf.dataLength)
 	{
-		LOG(LM_NET, LL_ERROR, "Failed to reply to scanner");
+		LOG(LM_NET, LL_ERROR,
+			"listen: scan reply send failed sent=%d want=%d errno=%d (%s)",
+			sent, (int)recvbuf.dataLength, errno, strerror(errno));
 	}
+	else
+	{
+	LOG(LM_NET, LL_INFO,
+		"listen: scan reply sent to %s:%u (%d bytes, enetPort=%u)",
+		addrbuf, addr.port, sent, (unsigned)sinfo.ENetPort);
+}
 }
 static void OnConnect(NetServer *n, ENetEvent event);
 static void OnReceive(NetServer *n, ENetEvent event)
@@ -280,7 +344,7 @@ static void OnReceive(NetServer *n, ENetEvent event)
 		LOG(LM_NET, LL_TRACE, "recv gameEvent(%d)", (int)gee.Type);
 		GameEvent e = GameEventNew(gee.Type);
 		NetDecode(event.packet, &e.u, gee.Fields);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	else
 	{
@@ -302,7 +366,7 @@ static void OnReceive(NetServer *n, ENetEvent event)
 					continue;
 				GameEvent e = GameEventNew(GAME_EVENT_PLAYER_DATA);
 				e.u.PlayerData = PlayerDataMissionReset(pData);
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 			// Flush game events to make sure we reset player data
 			HandleGameEvents(&gGameEvents, NULL, NULL, NULL, NULL);
@@ -320,16 +384,16 @@ static void OnReceive(NetServer *n, ENetEvent event)
 					defaultSpawnPosition = closestActor->Pos;
 				}
 
-				// Add the client's actors
 				for (int i = 0; i < MAX_LOCAL_PLAYERS; i++)
 				{
 					const int cid = (peerId + 1) * MAX_LOCAL_PLAYERS + i;
-					const PlayerData *pData = PlayerDataGetByUID(cid);
-					if (pData != NULL)
-					{
-						defaultSpawnPosition = PlacePlayer(
-							&gMap, pData, defaultSpawnPosition, true);
-					}
+					PlayerData *pData = PlayerDataGetByUID(cid);
+					if (pData == NULL)
+						continue;
+					if (pData->ActorUID != -1)
+						continue;
+					defaultSpawnPosition = PlacePlayer(
+						&gMap, pData, defaultSpawnPosition, true);
 				}
 			}
 			if (gMission.HasBegun)
@@ -397,7 +461,7 @@ static void OnDisconnect(const ENetEvent event)
 	{
 		GameEvent e = GameEventNew(GAME_EVENT_PLAYER_REMOVE);
 		e.u.PlayerRemove.UID = (peerId + 1) * MAX_LOCAL_PLAYERS + i;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 }
 
@@ -410,11 +474,24 @@ void NetServerFlush(NetServer *n)
 
 static void SendConfig(
 	Config *config, const char *name, NetServer *n, const int peerId);
+/* Empty ClassName decodes to gTileNothing on client; never send
+ * TileClassGetName(gTileNothing) which yields /(null)/(null)/ffffffff/ffffffff */
+static void FillNetTileClassName(char *buf, const TileClass *tc)
+{
+	if (tc == NULL || tc->Type == TILE_CLASS_NOTHING || tc->Style == NULL ||
+		tc->StyleType == NULL)
+	{
+		buf[0] = '\0';
+		return;
+	}
+	TileClassGetName(buf, tc, tc->Style, tc->StyleType, tc->Mask, tc->MaskAlt);
+}
 void NetServerSendGameStartMessages(NetServer *n, const int peerId)
 {
 	if (!n->server)
 		return;
 	GameEvent e;
+
 	// Send details of all current players
 	CA_FOREACH(const PlayerData, pOther, gPlayerDatas)
 	NPlayerData pd = NMakePlayerData(pOther);
@@ -429,6 +506,8 @@ void NetServerSendGameStartMessages(NetServer *n, const int peerId)
 	SendConfig(&gConfig, "Game.Fog", n, peerId);
 	SendConfig(&gConfig, "Game.SightRange", n, peerId);
 	SendConfig(&gConfig, "Game.AllyCollision", n, peerId);
+	/* Client MapBuild uses CampaignSeedRandom(Game.RandomSeed); must match host */
+	SendConfig(&gConfig, "Game.RandomSeed", n, peerId);
 
 	NetServerSendMsg(n, peerId, GAME_EVENT_NET_GAME_START, NULL);
 
@@ -492,27 +571,10 @@ void NetServerSendGameStartMessages(NetServer *n, const int peerId)
 				// Begin the next run
 				e = GameEventNew(GAME_EVENT_TILE_SET);
 				e.u.TileSet.Pos = Vec2i2Net(pos);
-				if (t->Class != NULL)
-				{
-					TileClassGetName(
-						e.u.TileSet.ClassName, t->Class, t->Class->Style,
-						t->Class->StyleType, t->Class->Mask,
-						t->Class->MaskAlt);
-				}
-				if (t->Door.Class != NULL)
-				{
-					TileClassGetName(
-						e.u.TileSet.DoorClassName, t->Door.Class,
-						t->Door.Class->Style, t->Door.Class->StyleType,
-						t->Door.Class->Mask, t->Door.Class->MaskAlt);
-				}
-				if (t->Door.Class2 != NULL)
-				{
-					TileClassGetName(
-						e.u.TileSet.DoorClass2Name, t->Door.Class2,
-						t->Door.Class2->Style, t->Door.Class2->StyleType,
-						t->Door.Class2->Mask, t->Door.Class2->MaskAlt);
-				}
+				FillNetTileClassName(e.u.TileSet.ClassName, t->Class);
+				FillNetTileClassName(e.u.TileSet.DoorClassName, t->Door.Class);
+				FillNetTileClassName(
+					e.u.TileSet.DoorClass2Name, t->Door.Class2);
 				e.u.TileSet.RunLength = 0;
 			}
 			tLast = t;
@@ -633,7 +695,8 @@ void NetServerSendMsg(
 			if (peer->data != NULL &&
 				((NetPeerData *)peer->data)->Id == peerId)
 			{
-				enet_peer_send(peer, 0, NetEncode(e, data));
+				ENetPacket *packet = NetEncode(e, data);
+				enet_peer_send(peer, 0, packet);
 				return;
 			}
 		}
@@ -643,6 +706,7 @@ void NetServerSendMsg(
 	{
 		LOG(LM_NET, LL_TRACE, "bcast msg(%d) to peers(%d)", (int)e,
 			(int)n->server->connectedPeers);
-		enet_host_broadcast(n->server, 0, NetEncode(e, data));
+		ENetPacket *packet = NetEncode(e, data);
+		enet_host_broadcast(n->server, 0, packet);
 	}
 }

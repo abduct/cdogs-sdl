@@ -116,6 +116,9 @@ set(CDOGS_SOURCES
 	window_context.c
 	XGetopt.c
 	yajl_utils.c)
+if(VITA)
+	list(APPEND CDOGS_SOURCES vita_net.c)
+endif()
 set(CDOGS_HEADERS
 	actor_fire.h
 	actor_pickup.h
@@ -232,6 +235,9 @@ set(CDOGS_HEADERS
 	window_context.h
 	XGetopt.h
 	yajl_utils.h)
+if(VITA)
+	list(APPEND CDOGS_HEADERS vita_net.h)
+endif()
 
 if(NOT USE_SHARED_ENET)
     add_subdirectory(enet)

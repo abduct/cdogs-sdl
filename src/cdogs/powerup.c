@@ -166,7 +166,7 @@ static void HealthPlace(const struct vec2 pos, void *data)
 	e.u.AddPickup.Pos = Vec2ToNet(pos);
 	strcpy(e.u.AddPickup.PickupClass, "health");
 	e.u.AddPickup.IsRandomSpawned = true;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 #define AMMO_SPAWN_TIME (20 * FPS_FRAMELIMIT)
@@ -221,5 +221,5 @@ static void AmmoPlace(const struct vec2 pos, void *data)
 	const Ammo *a = AmmoGetById(&gAmmo, ammoId);
 	sprintf(e.u.AddPickup.PickupClass, "ammo_%s", a->Name);
 	e.u.AddPickup.IsRandomSpawned = true;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }

@@ -251,7 +251,7 @@ static GameLoopResult NumPlayersUpdate(GameLoopData *data, LoopRunner *l)
 				GameEvent e = GameEventNew(GAME_EVENT_PLAYER_DATA);
 				e.u.PlayerData = PlayerDataDefault(i);
 				e.u.PlayerData.UID = gNetClient.FirstPlayerUID + i;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 			// Process the events to force add the players
 			HandleGameEvents(&gGameEvents, NULL, NULL, NULL, NULL);

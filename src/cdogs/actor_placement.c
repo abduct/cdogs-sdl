@@ -204,7 +204,7 @@ struct vec2 PlacePlayer(
 	e.u.ActorAdd.Direction = DIRECTION_DOWN;
 	e.u.ActorAdd.PlayerUID = p->UID;
 	Ammo2Net(&e.u.ActorAdd.Ammo_count, e.u.ActorAdd.Ammo, &p->ammo);
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 
 	if (pumpEvents)
 	{

@@ -57,12 +57,12 @@ void PickupPickup(TActor *a, Pickup *p, const bool pickupAll)
 			e = GameEventNew(GAME_EVENT_SOUND_AT);
 			strcpy(e.u.SoundAt.Sound, sound);
 			e.u.SoundAt.Pos = Vec2ToNet(a->thing.Pos);
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 		e = GameEventNew(GAME_EVENT_REMOVE_PICKUP);
 		e.u.RemovePickup.UID = p->UID;
 		e.u.RemovePickup.SpawnerUID = p->SpawnerUID;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		// Prevent multiple pickups by marking
 		p->PickedUp = true;
 		a->PickupAll = false;
@@ -81,7 +81,7 @@ bool PickupApplyEffect(
 		e = GameEventNew(GAME_EVENT_SCORE);
 		e.u.Score.PlayerUID = a->PlayerUID;
 		e.u.Score.Score = pe->u.Score;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 
 		e = GameEventNew(GAME_EVENT_ADD_PARTICLE);
 		e.u.AddParticle.Class =
@@ -97,7 +97,7 @@ bool PickupApplyEffect(
 		{
 			sprintf(e.u.AddParticle.Text, "+%d", pe->u.Score);
 		}
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 
 		UpdateMissionObjective(
 			&gMission, p->thing.flags, OBJECTIVE_COLLECT, 1);
@@ -115,7 +115,7 @@ bool PickupApplyEffect(
 			e.u.Heal.Amount = pe->u.Heal.Amount;
 			e.u.Heal.ExceedMax = pe->u.Heal.ExceedMax;
 			e.u.Heal.IsRandomSpawned = p->IsRandomSpawned;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 		break;
 
@@ -136,7 +136,7 @@ bool PickupApplyEffect(
 		e = GameEventNew(GAME_EVENT_ADD_KEYS);
 		e.u.AddKeys.KeyFlags = pe->u.Keys;
 		e.u.AddKeys.Pos = Vec2ToNet(a->thing.Pos);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		if (*sound == NULL)
 		{
 			*sound = "key";
@@ -149,7 +149,7 @@ bool PickupApplyEffect(
 		e = GameEventNew(GAME_EVENT_EXPLORE_TILES);
 		e.u.ExploreTiles.Runs_count = 1;
 		e.u.ExploreTiles.Runs[0].Run = gMap.Size.x * gMap.Size.y;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	break;
 
@@ -158,7 +158,7 @@ bool PickupApplyEffect(
 		e = GameEventNew(GAME_EVENT_PLAYER_ADD_LIVES);
 		e.u.PlayerAddLives.UID = a->PlayerUID;
 		e.u.PlayerAddLives.Lives = pe->u.Lives;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	break;
 
@@ -239,7 +239,7 @@ static bool TryPickupAmmo(TActor *a, const Pickup *p, const PickupEffect *pe)
 	e.u.AddAmmo.Ammo.Amount = amount;
 	e.u.AddAmmo.IsRandomSpawned = p->IsRandomSpawned;
 	// Note: receiving end will prevent ammo from exceeding max
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 	return true;
 }
 static bool TryPickupGun(
@@ -284,7 +284,7 @@ static bool TryPickupGun(
 			e.u.AddAmmo.Ammo.Id = ammoId;
 			e.u.AddAmmo.Ammo.Amount = ammoDeficit;
 			e.u.AddAmmo.IsRandomSpawned = false;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 
 			// Also play an ammo pickup sound
 			*sound = ammo->Sound;

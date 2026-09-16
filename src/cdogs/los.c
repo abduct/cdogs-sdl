@@ -182,7 +182,7 @@ void LOSCalcFrom(Map *map, const struct vec2i pos, const bool explore)
 				&e.u.ExploreTiles, &run, end,
 				*((bool *)CArrayGet(&map->LOS.Explored, end.y * map->Size.x + end.x))))
 			{
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 				e.u.ExploreTiles.Runs_count = 0;
 				e.u.ExploreTiles.Runs[0].Run = 0;
 				run = false;
@@ -191,7 +191,7 @@ void LOSCalcFrom(Map *map, const struct vec2i pos, const bool explore)
 	}
 	if (e.u.ExploreTiles.Runs_count > 0)
 	{
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	CArrayFillZero(&map->LOS.Explored);
 }

@@ -404,6 +404,10 @@ void MenuUpdateMouse(MenuSystem *ms)
 }
 GameLoopResult MenuUpdate(MenuSystem *ms)
 {
+	if (ms->current == NULL)
+	{
+		return UPDATE_RESULT_OK;
+	}
 	if (ms->current->type == MENU_TYPE_OPTIONS &&
 		ms->current->u.normal.changeKeyMenu != NULL)
 	{
@@ -433,7 +437,7 @@ GameLoopResult MenuUpdate(MenuSystem *ms)
 		ms->hasAbort = true;
 		return UPDATE_RESULT_OK;
 	}
-	if (MenuIsExit(ms))
+	if (MenuIsExit(ms) || ms->current == NULL)
 	{
 		return UPDATE_RESULT_OK;
 	}

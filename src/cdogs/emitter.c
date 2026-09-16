@@ -74,7 +74,7 @@ void EmitterStart(Emitter *em, const AddParticle *data)
 	{
 		strcpy(e.u.AddParticle.Text, e.u.AddParticle.Class->u.Text.Value);
 	}
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 void EmitterUpdate(Emitter *em, const AddParticle *data, const int ticks)

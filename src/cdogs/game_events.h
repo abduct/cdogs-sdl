@@ -204,7 +204,7 @@ extern CArray gGameEvents; // of GameEvent
 
 void GameEventsInit(CArray *store);
 void GameEventsTerminate(CArray *store);
-void GameEventsEnqueue(CArray *store, GameEvent e);
+void GameEventsEnqueue(CArray *store, const GameEvent *e);
 void GameEventsClear(CArray *store);
 
 GameEvent GameEventNew(GameEventType type);

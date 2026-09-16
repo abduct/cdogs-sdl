@@ -55,8 +55,10 @@
 #include <cdogs/ai.h>
 #include <cdogs/ai_coop.h>
 #include <cdogs/automap.h>
+#include <cdogs/config.h>
 #include <cdogs/draw/drawtools.h>
 #include <cdogs/events.h>
+#include <cdogs/game_events.h>
 #include <cdogs/grafx_bg.h>
 #include <cdogs/handle_game_events.h>
 #include <cdogs/log.h>
@@ -67,6 +69,9 @@
 #include <cdogs/net_server.h>
 #include <cdogs/objs.h>
 #include <cdogs/pickup.h>
+
+#include <stdlib.h>
+#include <string.h>
 
 #include "briefing_screens.h"
 #include "loading_screens.h"
@@ -98,7 +103,7 @@ static void PlayerSpecialCommands(TActor *actor, const int cmd)
 			e.u.Pilot.On = false;
 			e.u.Pilot.UID = actor->uid;
 			e.u.Pilot.VehicleUID = actor->vehicleUID;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 		else
 		{
@@ -149,11 +154,56 @@ static void RunGameTerminate(GameLoopData *data)
 
 	CFREE(rData);
 }
+/* Apply CONFIG events already queued from late-sync before MapBuild so
+ * CampaignSeedRandom sees the host Game.RandomSeed. Leaves other events. */
+static void ApplyPendingConfigEvents(void)
+{
+	for (int i = 0; i < (int)gGameEvents.size;)
+	{
+		GameEvent *e = CArrayGet(&gGameEvents, i);
+		if (e->Type != GAME_EVENT_CONFIG)
+		{
+			i++;
+			continue;
+		}
+		Config *c = ConfigGet(&gConfig, e->u.Config.Name);
+		switch (c->Type)
+		{
+		case CONFIG_TYPE_STRING:
+			CASSERT(false, "unimplemented");
+			break;
+		case CONFIG_TYPE_INT:
+			c->u.Int.Value = atoi(e->u.Config.Value);
+			break;
+		case CONFIG_TYPE_FLOAT:
+			c->u.Float.Value = atof(e->u.Config.Value);
+			break;
+		case CONFIG_TYPE_BOOL:
+			c->u.Bool.Value = strcmp(e->u.Config.Value, "true") == 0;
+			break;
+		case CONFIG_TYPE_ENUM:
+			c->u.Enum.Value = atoi(e->u.Config.Value);
+			break;
+		case CONFIG_TYPE_GROUP:
+			CASSERT(false, "Cannot send groups over net");
+			break;
+		default:
+			CASSERT(false, "Unknown config type");
+			break;
+		}
+		CArrayDelete(&gGameEvents, (size_t)i);
+	}
+}
 static void RunGameOnEnter(GameLoopData *data)
 {
 	RunGameData *rData = data->Data;
 
 	RunGameReset(rData);
+
+	if (rData->co->IsClient)
+	{
+		ApplyPendingConfigEvents();
+	}
 
 	CampaignSeedRandom(rData->co);
 	MapBuild(
@@ -184,7 +234,7 @@ static void RunGameOnEnter(GameLoopData *data)
 			continue;
 		GameEvent e = GameEventNew(GAME_EVENT_PLAYER_DATA);
 		e.u.PlayerData = PlayerDataMissionReset(p);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		CA_FOREACH_END()
 		// Process the events to force add the players
 		HandleGameEvents(&gGameEvents, NULL, NULL, NULL, NULL);
@@ -192,8 +242,8 @@ static void RunGameOnEnter(GameLoopData *data)
 		// Note: place players first,
 		// as bad guys are placed away from players
 		struct vec2 firstPos = svec2_zero();
-		CA_FOREACH(const PlayerData, p, gPlayerDatas)
-		if (!p->Ready)
+		CA_FOREACH(PlayerData, p, gPlayerDatas)
+		if (!p->Ready || p->ActorUID != -1)
 			continue;
 		firstPos = PlacePlayer(&gMap, p, firstPos, true);
 		CA_FOREACH_END()
@@ -235,7 +285,7 @@ static void RunGameOnEnter(GameLoopData *data)
 
 	NetServerSendGameStartMessages(&gNetServer, NET_SERVER_BCAST);
 	GameEvent start = GameEventNew(GAME_EVENT_GAME_START);
-	GameEventsEnqueue(&gGameEvents, start);
+	GameEventsEnqueue(&gGameEvents, &start);
 
 	// Start of mission message
 	GameEvent e = GameEventNew(GAME_EVENT_SET_MESSAGE);
@@ -260,15 +310,16 @@ static void RunGameOnEnter(GameLoopData *data)
 			sizeof e.u.SetMessage.Message - 1);
 	}
 	e.u.SetMessage.Ticks = 3000;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
+
 }
 static void RunGameOnExit(GameLoopData *data)
 {
 	RunGameData *rData = data->Data;
 
-	LOG(LM_MAIN, LL_INFO, "Game finished");
+	LOG(LM_NET, LL_INFO, "Game finished");
 
-	// Flush events
+	// Flush events (camera may be NULL — handlers must tolerate that)
 	HandleGameEvents(&gGameEvents, NULL, NULL, NULL, NULL);
 
 	PowerupSpawnerTerminate(&rData->healthSpawner);
@@ -295,13 +346,19 @@ static void RunGameOnExit(GameLoopData *data)
 	CA_FOREACH_END()
 	gNetClient.Ready = false;
 
+	gMission.HasStarted = false;
+	gMission.HasBegun = false;
+
 	// Calculate remaining health and survived
 	CA_FOREACH(PlayerData, p, gPlayerDatas)
 	p->survived = IsPlayerAlive(p);
-	if (IsPlayerAlive(p))
+	if (p->survived)
 	{
 		const TActor *player = ActorGetByUID(p->ActorUID);
-		p->hp = player->health;
+		if (player != NULL && player->isInUse)
+		{
+			p->hp = player->health;
+		}
 	}
 	CA_FOREACH_END()
 }
@@ -313,7 +370,7 @@ static void RunGameInput(GameLoopData *data)
 	{
 		GameEvent e = GameEventNew(GAME_EVENT_MISSION_END);
 		e.u.MissionEnd.IsQuit = true;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		return;
 	}
 
@@ -421,7 +478,7 @@ static GameLoopResult RunGameUpdate(GameLoopData *data, LoopRunner *l)
 	{
 		GameEvent begin = GameEventNew(GAME_EVENT_GAME_BEGIN);
 		begin.u.GameBegin.MissionTime = gMission.time;
-		GameEventsEnqueue(&gGameEvents, begin);
+		GameEventsEnqueue(&gGameEvents, &begin);
 	}
 
 	// Set mission complete and display exit if it is complete
@@ -495,7 +552,7 @@ static GameLoopResult RunGameUpdate(GameLoopData *data, LoopRunner *l)
 			ei.u.ActorImpulse.UID = p->uid;
 			ei.u.ActorImpulse.Vel = Vec2ToNet(svec2_scale(vel, 0.25f));
 			ei.u.ActorImpulse.Pos = Vec2ToNet(svec2_zero());
-			GameEventsEnqueue(&gGameEvents, ei);
+			GameEventsEnqueue(&gGameEvents, &ei);
 			LOG(LM_MAIN, LL_TRACE,
 				"playerUID(%d) pos(%f, %f) screen(%d, %d) impulse(%f, %f)",
 				p->uid, p->thing.Pos.x, p->thing.Pos.y, screen.x, screen.y,
@@ -554,7 +611,7 @@ static void NextLoop(RunGameData *rData, LoopRunner *l)
 	const int survivingPlayers = GetNumPlayers(PLAYER_ALIVE, false, false);
 	const bool survivedAndCompletedObjectives =
 		survivingPlayers > 0 && MissionAllObjectivesComplete(&gMission);
-	// Persist player weapons/ammo
+	// Persist local players' weapons/ammo only
 	CA_FOREACH(PlayerData, p, gPlayerDatas)
 	PersistPlayerWeaponsAndAmmo(p);
 	CA_FOREACH_END()
@@ -587,9 +644,11 @@ static void NextLoop(RunGameData *rData, LoopRunner *l)
 }
 static void PersistPlayerWeaponsAndAmmo(PlayerData *p)
 {
-	if (!IsPlayerAlive(p))
+	if (!p->IsLocal || !IsPlayerAlive(p))
 		return;
 	const TActor *a = ActorGetByUID(p->ActorUID);
+	if (a == NULL || !a->isInUse)
+		return;
 	ActorPersistPlayerWeaponsAndAmmo(a);
 }
 static void CheckMissionCompletion(const struct MissionOptions *mo)
@@ -604,7 +663,7 @@ static void CheckMissionCompletion(const struct MissionOptions *mo)
 		GameEvent e = GameEventNew(GAME_EVENT_OBJECTIVE_UPDATE);
 		e.u.ObjectiveUpdate.ObjectiveId = _ca_index;
 		e.u.ObjectiveUpdate.Count = update;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	CA_FOREACH_END()
 
@@ -616,12 +675,12 @@ static void CheckMissionCompletion(const struct MissionOptions *mo)
 	if (mo->state == MISSION_STATE_PLAY && canExit)
 	{
 		GameEvent e = GameEventNew(GAME_EVENT_MISSION_PICKUP);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	if (mo->state == MISSION_STATE_PICKUP && !canExit)
 	{
 		GameEvent e = GameEventNew(GAME_EVENT_MISSION_INCOMPLETE);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	if (mo->state == MISSION_STATE_PICKUP &&
 		mo->pickupTime + PICKUP_LIMIT <= mo->time)
@@ -636,7 +695,7 @@ static void CheckMissionCompletion(const struct MissionOptions *mo)
 		{
 			e.u.MissionEnd.Mission = mo->index + 1;
 		}
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 
 	// Check that all players have been destroyed
@@ -658,7 +717,7 @@ static void CheckMissionCompletion(const struct MissionOptions *mo)
 			GameEvent e = GameEventNew(GAME_EVENT_MISSION_END);
 			e.u.MissionEnd.Delay = GAME_OVER_DELAY;
 			e.u.MissionEnd.Mission = mo->index;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 	}
 }

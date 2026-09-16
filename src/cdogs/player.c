@@ -27,6 +27,9 @@
 */
 #include "player.h"
 
+#include <stdio.h>
+#include <string.h>
+
 #include "actors.h"
 #include "events.h"
 #include "log.h"
@@ -42,9 +45,10 @@ void PlayerDataInit(CArray *p)
 	CArrayInit(p, sizeof(PlayerData));
 }
 
-void PlayerDataAddOrUpdate(const NPlayerData pd)
+void PlayerDataAddOrUpdate(const NPlayerData *pd)
 {
-	PlayerData *p = PlayerDataGetByUID(pd.UID);
+	CASSERT(pd != NULL, "PlayerDataAddOrUpdate null");
+	PlayerData *p = PlayerDataGetByUID((int)pd->UID);
 	if (p == NULL)
 	{
 		PlayerData pNew;
@@ -55,23 +59,23 @@ void PlayerDataAddOrUpdate(const NPlayerData pd)
 		// Set defaults
 		p->ActorUID = -1;
 		p->IsLocal =
-			(int)pd.UID >= gNetClient.FirstPlayerUID &&
-			(int)pd.UID < gNetClient.FirstPlayerUID + MAX_LOCAL_PLAYERS;
-		CArrayInitFillZero(&p->ammo, sizeof(int), pd.Ammo_count);
+			(int)pd->UID >= gNetClient.FirstPlayerUID &&
+			(int)pd->UID < gNetClient.FirstPlayerUID + MAX_LOCAL_PLAYERS;
+		CArrayInitFillZero(&p->ammo, sizeof(int), pd->Ammo_count);
 		p->inputDevice = INPUT_DEVICE_UNSET;
 
 		p->Char.speed = 1;
 
 		p->WeaponUsages = WeaponUsagesNew();
 
-		LOG(LM_MAIN, LL_INFO, "add default player UID(%u) local(%s)", pd.UID,
+		LOG(LM_MAIN, LL_INFO, "add default player UID(%u) local(%s)", pd->UID,
 			p->IsLocal ? "true" : "false");
 	}
 
-	p->UID = pd.UID;
+	p->UID = (int)pd->UID;
 
-	strcpy(p->name, pd.Name);
-	p->Char.Class = StrCharacterClass(pd.CharacterClass);
+	strcpy(p->name, pd->Name);
+	p->Char.Class = StrCharacterClass(pd->CharacterClass);
 	if (p->Char.Class == NULL)
 	{
 		p->Char.Class = StrCharacterClass("Jones");
@@ -83,32 +87,54 @@ void PlayerDataAddOrUpdate(const NPlayerData pd)
 	{                                                                         \
 		CSTRDUP(p->Char.HeadParts[_hp], _pdPart);                             \
 	}
-	ADDHEADPART(HEAD_PART_HAIR, pd.Hair);
-	ADDHEADPART(HEAD_PART_FACEHAIR, pd.Facehair);
-	ADDHEADPART(HEAD_PART_HAT, pd.Hat);
-	ADDHEADPART(HEAD_PART_GLASSES, pd.Glasses);
-	p->Char.Colors = Net2CharColors(pd.Colors);
-	for (int i = 0; i < (int)pd.Weapons_count; i++)
+	ADDHEADPART(HEAD_PART_HAIR, pd->Hair);
+	ADDHEADPART(HEAD_PART_FACEHAIR, pd->Facehair);
+	ADDHEADPART(HEAD_PART_HAT, pd->Hat);
+	ADDHEADPART(HEAD_PART_GLASSES, pd->Glasses);
+	p->Char.Colors = Net2CharColors(pd->Colors);
+	for (int i = 0; i < (int)pd->Weapons_count; i++)
 	{
 		p->guns[i] = NULL;
-		if (strlen(pd.Weapons[i]) > 0)
+		if (strlen(pd->Weapons[i]) > 0)
 		{
-			const WeaponClass *wc = StrWeaponClass(pd.Weapons[i]);
+			const WeaponClass *wc = StrWeaponClass(pd->Weapons[i]);
 			p->guns[i] = wc;
 		}
 	}
-	CArrayFillZero(&p->ammo);
-	for (int i = 0; i < (int)pd.Ammo_count; i++)
+	/* Update path must (re)size ammo: a prior sync can create a player with
+	 * Ammo_count 0 (empty CArray), and later updates used to CArraySet into
+	 * NULL data. */
 	{
-		CArraySet(&p->ammo, pd.Ammo[i].Id, &pd.Ammo[i].Amount);
+		size_t ammoSize = (size_t)pd->Ammo_count;
+		for (int i = 0; i < (int)pd->Ammo_count; i++)
+		{
+			const size_t need = (size_t)pd->Ammo[i].Id + 1;
+			if (need > ammoSize)
+			{
+				ammoSize = need;
+			}
+		}
+		if (p->ammo.data == NULL || p->ammo.size < ammoSize)
+		{
+			CArrayTerminate(&p->ammo);
+			CArrayInitFillZero(&p->ammo, sizeof(int), ammoSize);
+		}
+		else
+		{
+			CArrayFillZero(&p->ammo);
+		}
 	}
-	p->Lives = pd.Lives;
-	p->Stats = pd.Stats;
-	p->Totals = pd.Totals;
-	p->Char.maxHealth = pd.MaxHealth;
-	p->Char.excessHealth = pd.ExcessHealth;
-	p->HP = pd.HP;
-	p->lastMission = pd.LastMission;
+	for (int i = 0; i < (int)pd->Ammo_count; i++)
+	{
+		CArraySet(&p->ammo, pd->Ammo[i].Id, &pd->Ammo[i].Amount);
+	}
+	p->Lives = (int)pd->Lives;
+	p->Stats = pd->Stats;
+	p->Totals = pd->Totals;
+	p->Char.maxHealth = (int)pd->MaxHealth;
+	p->Char.excessHealth = (int)pd->ExcessHealth;
+	p->HP = (int)pd->HP;
+	p->lastMission = (int)pd->LastMission;
 
 	// Ready players as well
 	p->Ready = true;
@@ -151,6 +177,7 @@ static void PlayerTerminate(PlayerData *p)
 {
 	CFREE(p->Char.bot);
 	WeaponUsagesTerminate(p->WeaponUsages);
+	CArrayTerminate(&p->ammo);
 }
 
 NPlayerData PlayerDataDefault(const int idx)
@@ -368,6 +395,10 @@ bool IsPlayerAlive(const PlayerData *player)
 		return false;
 	}
 	const TActor *p = ActorGetByUID(player->ActorUID);
+	if (p == NULL || !p->isInUse)
+	{
+		return false;
+	}
 	return !p->dead;
 }
 bool IsPlayerHuman(const PlayerData *player)
@@ -380,11 +411,15 @@ bool IsPlayerHumanAndAlive(const PlayerData *player)
 }
 bool IsPlayerAliveOrDying(const PlayerData *player)
 {
-	if (player->ActorUID == -1)
+	if (player == NULL || player->ActorUID == -1)
 	{
 		return false;
 	}
 	const TActor *p = ActorGetByUID(player->ActorUID);
+	if (p == NULL || !p->isInUse)
+	{
+		return false;
+	}
 	const NamedSprites *deathSprites = CharacterClassGetDeathSprites(
 		ActorGetCharacter(p)->Class, &gPicManager);
 	return p->dead <= (int)deathSprites->pics.size;

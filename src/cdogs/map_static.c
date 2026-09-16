@@ -151,7 +151,7 @@ static void AddCharacter(const MapBuilder *mb, const CharacterPlaces *cps)
 	GameEvent e = GameEventNewActorAdd(Vec2CenterOfTile(cp->Pos), c, NULL);
 	e.u.ActorAdd.CharId = cps->Index;
 	e.u.ActorAdd.Direction = cp->Dir;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 	CA_FOREACH_END()
 }
 static void AddObjective(MapBuilder *mb, const ObjectivePositions *op);
@@ -188,7 +188,7 @@ static void AddObjective(MapBuilder *mb, const ObjectivePositions *op)
 		GameEvent e = GameEventNewActorAdd(pos, c, NULL);
 		e.u.ActorAdd.CharId = charId;
 		e.u.ActorAdd.ThingFlags = ObjectiveToThing(op->Index);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	break;
 	case OBJECTIVE_COLLECT:
@@ -206,7 +206,7 @@ static void AddObjective(MapBuilder *mb, const ObjectivePositions *op)
 		GameEvent e = GameEventNewActorAdd(pos, c, NULL);
 		e.u.ActorAdd.CharId = charId;
 		e.u.ActorAdd.ThingFlags = ObjectiveToThing(op->Index);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	break;
 	default:
@@ -242,6 +242,6 @@ static void AddPickup(const PickupPositions *pp)
 	GameEvent e = GameEventNew(GAME_EVENT_ADD_PICKUP);
 	e.u.AddPickup.Pos = Vec2ToNet(Vec2CenterOfTile(*pos));
 	strcpy(e.u.AddPickup.PickupClass, pp->P->Name);
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 	CA_FOREACH_END()
 }

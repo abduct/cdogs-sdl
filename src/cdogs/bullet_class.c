@@ -190,7 +190,7 @@ bool BulletUpdate(struct MobileObject *obj, const int ticks)
 			s.u.AddParticle.Class = obj->bulletClass->OutOfRangeSpark;
 			s.u.AddParticle.Pos = obj->thing.Pos;
 			s.u.AddParticle.Z = obj->z;
-			GameEventsEnqueue(&gGameEvents, s);
+			GameEventsEnqueue(&gGameEvents, &s);
 		}
 		return false;
 	}
@@ -283,7 +283,7 @@ bool BulletUpdate(struct MobileObject *obj, const int ticks)
 			{
 				obj->thing.SoundLock += SOUND_LOCK_THING;
 			}
-			GameEventsEnqueue(&gGameEvents, b);
+			GameEventsEnqueue(&gGameEvents, &b);
 		}
 
 		AddTrail(obj, posStart, (bounced || !alive) ? hit.Pos : pos, ticks);
@@ -344,7 +344,7 @@ bool BulletUpdate(struct MobileObject *obj, const int ticks)
 				GameEvent es = GameEventNew(GAME_EVENT_SOUND_AT);
 				strcpy(es.u.SoundAt.Sound, obj->bulletClass->Hit.Wall.Sound);
 				es.u.SoundAt.Pos = Vec2ToNet(pos);
-				GameEventsEnqueue(&gGameEvents, es);
+				GameEventsEnqueue(&gGameEvents, &es);
 			}
 			else
 			{
@@ -1123,7 +1123,7 @@ void BulletBounce(const NBulletBounce bb)
 		s.u.AddParticle.Class = o->bulletClass->Spark;
 		s.u.AddParticle.Pos = bouncePos;
 		s.u.AddParticle.Z = o->z;
-		GameEventsEnqueue(&gGameEvents, s);
+		GameEventsEnqueue(&gGameEvents, &s);
 	}
 	if (bb.WallMark && o->bulletClass->WallMark != NULL)
 	{
@@ -1132,7 +1132,7 @@ void BulletBounce(const NBulletBounce bb)
 		s.u.AddParticle.Pos = bouncePos;
 		// Randomise Z on the wall
 		s.u.AddParticle.Z = o->z + (int)RAND_FLOAT(-WALL_MARK_Z, WALL_MARK_Z);
-		GameEventsEnqueue(&gGameEvents, s);
+		GameEventsEnqueue(&gGameEvents, &s);
 	}
 	MapTryMoveThing(&gMap, &o->thing, NetToVec2(bb.Pos));
 	o->thing.Vel = NetToVec2(bb.Vel);
@@ -1166,7 +1166,7 @@ void PlayHitSound(const BulletClass *b, const HitType t, const struct vec2 pos)
 	}
 	strcpy(es.u.SoundAt.Sound, sound);
 	es.u.SoundAt.Pos = Vec2ToNet(pos);
-	GameEventsEnqueue(&gGameEvents, es);
+	GameEventsEnqueue(&gGameEvents, &es);
 }
 
 void BulletDestroy(TMobileObject *obj)

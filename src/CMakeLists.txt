@@ -88,6 +88,17 @@ elseif(MSVC)
 endif()
 target_link_libraries(cdogs-sdl cdogs cdogs_proto ${EXTRA_LIBRARIES})
 
+# Debugger-friendly flags for C-Dogs app + game library when GDB is enabled.
+# Does not alter ordinary Release/Debug builds with CDOGS_VITA_GDB=OFF.
+if(VITA AND CDOGS_VITA_GDB)
+	target_compile_definitions(cdogs-sdl PRIVATE CDOGS_VITA_GDB=1)
+	target_compile_options(cdogs-sdl PRIVATE
+		-O0 -g -fno-omit-frame-pointer -fno-inline-functions)
+	target_compile_definitions(cdogs PRIVATE CDOGS_VITA_GDB=1)
+	target_compile_options(cdogs PRIVATE
+		-O0 -g -fno-omit-frame-pointer -fno-inline-functions)
+endif()
+
 if(GCW0)
 	add_custom_command(TARGET cdogs-sdl
 		POST_BUILD

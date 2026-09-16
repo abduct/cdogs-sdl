@@ -191,7 +191,7 @@ static void ActionRun(Action *a, CArray *mapTriggers)
 		break;
 
 	case ACTION_EVENT:
-		GameEventsEnqueue(&gGameEvents, a->u.Event);
+		GameEventsEnqueue(&gGameEvents, &a->u.Event);
 		break;
 
 	case ACTION_ACTIVATEWATCH:
@@ -244,7 +244,7 @@ bool TriggerTryActivate(Trigger *t, const int flags, const struct vec2i tilePos)
 		GameEvent e = GameEventNew(GAME_EVENT_TRIGGER);
 		e.u.TriggerEvent.ID = t->id;
 		e.u.TriggerEvent.Tile = Vec2i2Net(tilePos);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	else
 	{

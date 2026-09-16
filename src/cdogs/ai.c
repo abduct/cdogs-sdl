@@ -517,7 +517,7 @@ void AIWake(TActor *a, const int delayModifier)
 		CharacterClassGetSound(
 			ActorGetCharacter(a)->Class, es.u.Bark.Sound, "alert");
 		es.u.Bark.UID = a->uid;
-		GameEventsEnqueue(&gGameEvents, es);
+		GameEventsEnqueue(&gGameEvents, &es);
 	}
 }
 static int Follow(TActor *a)
@@ -609,7 +609,7 @@ void AIAddRandomEnemies(const int enemies, const Mission *m)
 		GameEvent e = GameEventNewActorAdd(
 			PlaceAwayFromPlayers(&gMap, true, PLACEMENT_ACCESS_ANY), c, NULL);
 		e.u.ActorAdd.CharId = charId;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		gBaddieCount++;
 	}
 }
@@ -631,7 +631,7 @@ void InitializeBadGuys(void)
 				PlaceAwayFromPlayers(&gMap, false, paFlags), c, NULL);
 			e.u.ActorAdd.CharId = charId;
 			e.u.ActorAdd.ThingFlags = ObjectiveToThing(_ca_index);
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 
 			// Process the events that actually place the actors
 			HandleGameEvents(&gGameEvents, NULL, NULL, NULL, NULL);
@@ -652,7 +652,7 @@ void InitializeBadGuys(void)
 				c, NULL);
 			e.u.ActorAdd.CharId = charId;
 			e.u.ActorAdd.ThingFlags = ObjectiveToThing(_ca_index);
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 
 			// Process the events that actually place the actors
 			HandleGameEvents(&gGameEvents, NULL, NULL, NULL, NULL);
@@ -682,7 +682,7 @@ void CreateEnemies(void)
 		GameEvent e = GameEventNewActorAdd(
 			PlaceAwayFromPlayers(&gMap, true, PLACEMENT_ACCESS_ANY), c, NULL);
 		e.u.ActorAdd.CharId = charId;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		gBaddieCount++;
 
 		// Process the events that actually place the actors

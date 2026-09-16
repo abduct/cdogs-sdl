@@ -34,6 +34,9 @@ option(DEBUG "Enable debug build" OFF)
 option(DEBUG_PROFILE "Enable debug profile build" OFF)
 option(USE_SHARED_ENET "Use system installed copy of enet" OFF)
 option(BUILD_EDITOR "Build cdogs-sdl-editor" ON)
+# Opt-in VitaDebugger/libuvdb GDB server. Default OFF so ordinary Vita and
+# desktop builds are unchanged. Only meaningful when the Vita toolchain is used.
+option(CDOGS_VITA_GDB "Enable VitaDebugger/libuvdb GDB server (Vita only)" OFF)
 
 # check for crosscompiling (defined when using a toolchain file)
 if(CMAKE_CROSSCOMPILING)
@@ -172,6 +175,30 @@ else()
 			add_definitions(-Winline -Werror)
 		endif()
 		set(EXTRA_LIBRARIES "m")
+	endif()
+endif()
+
+# Vita BSD sockets require the net / netctl stubs (SDL already pulls SceSysmodule).
+if(VITA)
+	list(APPEND EXTRA_LIBRARIES SceNet_stub SceNetCtl_stub)
+endif()
+
+# Link the hardware-validated VitaDebugger stack (installed into VitaSDK).
+# libuvdb was built with UVDB_KERNEL_THREAD_CONTROL=1; the public uvdb.h API
+# does not require that define in the consuming application — only the matching
+# kubridge + vitadebug_kernel stubs (see VitaDebugger Makefile EXTRA_LDFLAGS).
+if(CDOGS_VITA_GDB)
+	if(NOT VITA)
+		message(WARNING "CDOGS_VITA_GDB is only meaningful for Vita builds; ignoring")
+	else()
+		message(STATUS "CDOGS_VITA_GDB: linking installed libuvdb + kubridge + vitadebug_kernel")
+		list(APPEND EXTRA_LIBRARIES
+			uvdb
+			kubridge_stub
+			vitadebug_kernel_stub
+			SceNetPs_stub
+			SceKernelModulemgr_stub
+			pthread)
 	endif()
 endif()
 

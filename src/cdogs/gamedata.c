@@ -59,6 +59,7 @@
 #include "actors.h"
 #include "config.h"
 #include "defs.h"
+#include "game_events.h"
 #include "keyboard.h"
 #include "log.h"
 #include "music.h"
@@ -75,7 +76,6 @@ struct MissionOptions gMission;
 
 struct SongDef *gGameSongs = NULL;
 struct SongDef *gMenuSongs = NULL;
-
 
 bool CampaignLoad(Campaign *co, const CampaignEntry *entry)
 {
@@ -141,6 +141,8 @@ void MissionOptionsTerminate(struct MissionOptions *mo)
 	CA_FOREACH_END()
 	gMission.HasStarted = false;
 	gMission.HasBegun = false;
+	/* Drop any queued world events from the previous round (net STATE etc). */
+	CArrayClear(&gGameEvents);
 	CArrayTerminate(&mo->Weapons);
 
 	memset(mo, 0, sizeof *mo);

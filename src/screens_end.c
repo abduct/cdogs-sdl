@@ -100,6 +100,18 @@ static int ComparePlayerScores(const void *v1, const void *v2)
 {
 	const PlayerData *p1 = PlayerDataGetByUID(*(const int *)v1);
 	const PlayerData *p2 = PlayerDataGetByUID(*(const int *)v2);
+	if (p1 == NULL && p2 == NULL)
+	{
+		return 0;
+	}
+	if (p1 == NULL)
+	{
+		return 1;
+	}
+	if (p2 == NULL)
+	{
+		return -1;
+	}
 	int p1s = GetModeScore(p1);
 	int p2s = GetModeScore(p2);
 	if (p1s > p2s)
@@ -197,7 +209,6 @@ static void PlayerListCustomDraw(
 	// Draw players starting from the index
 	// TODO: custom columns
 	const PlayerList *pl = data;
-
 	// First draw the headers
 	const int xStart = pos.x + 80 + (size.x - 320) / 2;
 	int x = xStart;
@@ -419,8 +430,8 @@ GameLoopData *ScreenDogfightScores(void)
 	if (IsPlayerAlive(p))
 	{
 		p->Totals.Score++;
-		maxScore = MAX(maxScore, (int)p->Totals.Score);
 	}
+	maxScore = MAX(maxScore, (int)p->Totals.Score);
 	CA_FOREACH_END()
 	gCampaign.IsComplete = maxScore == ModeMaxRoundsWon(gCampaign.Entry.Mode);
 	CASSERT(
@@ -438,9 +449,17 @@ static GameLoopResult DogfightScoresUpdate(GameLoopData *data, LoopRunner *l)
 	PlayerList *pl = data->Data;
 
 	const GameLoopResult result = MenuUpdate(&pl->ms);
-	if (result == UPDATE_RESULT_OK && gCampaign.IsComplete)
+	if (result == UPDATE_RESULT_OK)
 	{
-		LoopRunnerChange(l, ScreenDogfightFinalScores());
+		/* Cross sets ms->current=NULL; without pop next MenuUpdate DFAR=0x4. */
+		if (gCampaign.IsComplete)
+		{
+			LoopRunnerChange(l, ScreenDogfightFinalScores());
+		}
+		else
+		{
+			LoopRunnerPop(l);
+		}
 	}
 	return result;
 }

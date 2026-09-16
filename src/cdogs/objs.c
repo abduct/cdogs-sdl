@@ -117,7 +117,7 @@ void DamageObject(const NThingDamage d)
 			e.u.MapObjectRemove.UID = o->uid;
 			e.u.MapObjectRemove.ActorUID = d.SourceActorUID;
 			e.u.MapObjectRemove.Flags = d.Flags;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 
 		// Exploding spall
@@ -185,7 +185,7 @@ static void AddPickupAtObject(const TObject *o, const PickupType type)
 	}
 	e.u.AddPickup.Pos = Vec2ToNet(o->thing.Pos);
 	e.u.AddPickup.IsRandomSpawned = true;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 static void PlaceWreck(const char *wreckClass, const Thing *ti);
@@ -207,7 +207,7 @@ void ObjRemove(const NMapObjectRemove mor)
 			GameEvent e = GameEventNew(GAME_EVENT_SCORE);
 			e.u.Score.PlayerUID = playerUID;
 			e.u.Score.Score = OBJECT_SCORE;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 
 		// Weapons that go off when this object is destroyed
@@ -237,7 +237,7 @@ void ObjRemove(const NMapObjectRemove mor)
 			e.u.AddBullet.UID = MobObjsObjsGetNextUID();
 			strcpy(e.u.AddBullet.BulletClass, o->Class->Wreck.Bullet);
 			e.u.AddBullet.MuzzlePos = Vec2ToNet(o->thing.Pos);
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 	}
 
@@ -273,7 +273,7 @@ static void PlaceWreck(const char *wreckClass, const Thing *ti)
 	e.u.MapObjectAdd.Pos = Vec2ToNet(ti->Pos);
 	e.u.MapObjectAdd.ThingFlags = MapObjectGetFlags(mo);
 	e.u.MapObjectAdd.Health = mo->Health;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 bool CanHit(
@@ -360,7 +360,7 @@ static void DoDamageThing(
 	{
 		strcpy(e.u.ThingDamage.SourceWeaponClassName, weapon->name);
 	}
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 static void DoDamageCharacter(
 	const TActor *actor, const TActor *source, const struct vec2 hitVector,
@@ -383,7 +383,7 @@ static void DoDamageCharacter(
 		ei.u.ActorImpulse.UID = actor->uid;
 		ei.u.ActorImpulse.Vel = Vec2ToNet(vel);
 		ei.u.ActorImpulse.Pos = Vec2ToNet(actor->Pos);
-		GameEventsEnqueue(&gGameEvents, ei);
+		GameEventsEnqueue(&gGameEvents, &ei);
 	}
 
 	const bool canDamage =
@@ -414,7 +414,7 @@ static void DoDamageCharacter(
 			{
 				e.u.Score.Score = bullet->Power;
 			}
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 	}
 }
@@ -430,7 +430,7 @@ void UpdateMobileObjects(int ticks)
 	{
 		GameEvent e = GameEventNew(GAME_EVENT_REMOVE_BULLET);
 		e.u.RemoveBullet.UID = obj->UID;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		continue;
 	}
 	CA_FOREACH_END()
@@ -591,7 +591,7 @@ void UpdateObjects(const int ticks)
 			strcpy(e.u.AddPickup.PickupClass, obj->Class->u.PickupClass->Name);
 			e.u.AddPickup.SpawnerUID = obj->uid;
 			e.u.AddPickup.Pos = Vec2ToNet(obj->thing.Pos);
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 		break;
 	case MAP_OBJECT_TYPE_ACTOR_SPAWNER:
@@ -614,13 +614,13 @@ void UpdateObjects(const int ticks)
 					obj->Class->u.Character.CharId),
 				NULL);
 			e.u.ActorAdd.CharId = obj->Class->u.Character.CharId;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 
 			// Destroy object
 			// TODO: persistent actor spawners
 			e = GameEventNew(GAME_EVENT_MAP_OBJECT_REMOVE);
 			e.u.MapObjectRemove.UID = obj->uid;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 		break;
 	default:

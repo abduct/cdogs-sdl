@@ -73,7 +73,7 @@ void ParticlesUpdate(CArray *particles, const int ticks)
 	{
 		GameEvent e = GameEventNew(GAME_EVENT_PARTICLE_REMOVE);
 		e.u.ParticleRemoveId = _ca_index;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	else
 	{
@@ -90,7 +90,7 @@ void ParticlesUpdate(CArray *particles, const int ticks)
 	{
 		GameEvent e = GameEventNew(GAME_EVENT_PARTICLE_REMOVE);
 		e.u.ParticleRemoveId = maxParticleId;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 }
 

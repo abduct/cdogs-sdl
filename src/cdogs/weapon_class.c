@@ -507,7 +507,7 @@ void WeaponClassFire(
 	e.u.GunFire.Sound = playSound;
 	e.u.GunFire.Flags = flags;
 	e.u.GunFire.IsGun = isGun;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 void WeaponClassAddBrass(
@@ -535,7 +535,7 @@ void WeaponClassAddBrass(
 	e.u.AddParticle.Angle = RAND_DOUBLE(0, MPI * 2);
 	e.u.AddParticle.DZ = (float)((rand() % 6) + 6);
 	e.u.AddParticle.Spin = RAND_DOUBLE(-0.1, 0.1);
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 static struct vec2 GetMuzzleOffset(

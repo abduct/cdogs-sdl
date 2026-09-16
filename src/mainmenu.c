@@ -113,7 +113,7 @@ static void GenerateLiveBackground(MainMenuData *data)
 	GameEvent e = GameEventNew(GAME_EVENT_PLAYER_DATA);
 	e.u.PlayerData = PlayerDataDefault(0);
 	e.u.PlayerData.UID = gNetClient.FirstPlayerUID;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 	HandleGameEvents(&gGameEvents, NULL, NULL, NULL, NULL);
 	CA_FOREACH(PlayerData, p, gPlayerDatas)
 	p->inputDevice = INPUT_DEVICE_AI;
@@ -181,10 +181,17 @@ static void MainMenuOnEnter(GameLoopData *data)
 	ConfigResetChanged(&gConfig);
 	CampaignSettingTerminateAll(&gCampaign.Setting);
 
-	MainMenuReset(mData);
+	/* Tear down multiplayer/session leftovers BEFORE regenerating the live
+	 * menu background. GenerateLiveBackground enqueues PLAYER_DATA using
+	 * FirstPlayerUID; after a client disconnect that UID is 0 and can collide
+	 * with a stale remote PlayerData whose ammo CArray was never sized. */
 	NetClientDisconnect(&gNetClient);
 	NetServerClose(&gNetServer);
+	PlayerDataTerminate(&gPlayerDatas);
+	PlayerDataInit(&gPlayerDatas);
 	GameEventsTerminate(&gGameEvents);
+
+	MainMenuReset(mData);
 
 	// Auto-enter the submenu corresponding to the last game mode
 	menu_t *startMenu = MenuGetSubmenuByName(mData->ms.root, "Start");

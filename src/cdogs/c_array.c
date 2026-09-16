@@ -72,13 +72,24 @@ static void GrowIfFull(CArray *a)
 }
 void CArrayCopy(CArray *dst, const CArray *src)
 {
+	if (dst == NULL || src == NULL)
+	{
+		return;
+	}
+	if (src->elemSize == 0)
+	{
+		return;
+	}
 	if (dst->elemSize > 0)
 	{
 		CArrayTerminate(dst);
 	}
 	CArrayInit(dst, src->elemSize);
 	CArrayResize(dst, src->size, NULL);
-	memcpy(dst->data, src->data, src->size * src->elemSize);
+	if (src->size > 0 && src->data != NULL && dst->data != NULL)
+	{
+		memcpy(dst->data, src->data, src->size * src->elemSize);
+	}
 }
 
 void *CArrayPushBack(CArray *a, const void *elem)
@@ -183,6 +194,10 @@ void CArrayFill(CArray *a, const void *elem)
 
 void CArrayFillZero(CArray *a)
 {
+	if (a == NULL || a->data == NULL || a->size == 0 || a->elemSize == 0)
+	{
+		return;
+	}
 	memset(a->data, 0, a->size * a->elemSize);
 }
 

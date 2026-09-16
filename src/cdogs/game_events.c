@@ -93,6 +93,9 @@ static GameEventEntry sGameEventEntries[] = {
 	{GAME_EVENT_PLAYER_ADD_LIVES, true, false, true, true, NPlayerAddLives_fields},
 	{GAME_EVENT_ACTOR_MELEE, true, true, true, true, NActorMelee_fields},
 	{GAME_EVENT_ACTOR_PILOT, true, true, true, true, NActorPilot_fields},
+	/* Must stay aligned with GameEventType: missing rows skew every later
+	 * net message (e.g. EXPLORE_TILES decoded as RESCUE_CHARACTER). */
+	{GAME_EVENT_ACTOR_BARK, true, false, true, true, NActorBark_fields},
 
 	{GAME_EVENT_ADD_PICKUP, true, false, true, true, NAddPickup_fields},
 	{GAME_EVENT_REMOVE_PICKUP, true, false, true, true, NRemovePickup_fields},
@@ -120,69 +123,73 @@ static GameEventEntry sGameEventEntries[] = {
 	{GAME_EVENT_MISSION_INCOMPLETE, true, false, true, true, NULL},
 	{GAME_EVENT_MISSION_PICKUP, true, false, true, true, NULL},
 	{GAME_EVENT_MISSION_END, true, false, true, true, NMissionEnd_fields}};
+_Static_assert(
+	sizeof sGameEventEntries / sizeof sGameEventEntries[0] ==
+		(size_t)GAME_EVENT_MISSION_END + 1,
+	"sGameEventEntries must match GameEventType enumerators");
 GameEventEntry GameEventGetEntry(const GameEventType e)
 {
 	return sGameEventEntries[(int)e];
 }
 
-void GameEventsEnqueue(CArray *store, GameEvent e)
+void GameEventsEnqueue(CArray *store, const GameEvent *e)
 {
-	if (store->elemSize == 0)
+	if (store->elemSize == 0 || e == NULL)
 	{
 		return;
 	}
 	// If we're the server, broadcast any events that clients need
 	// If we're the client, pass along to server, but only if it's for a local
 	// player Otherwise we'd ping-pong the same updates from the server
-	const GameEventEntry gee = sGameEventEntries[e.Type];
+	const GameEventEntry gee = sGameEventEntries[e->Type];
 	if (gee.Broadcast)
 	{
-		NetServerSendMsg(&gNetServer, NET_SERVER_BCAST, gee.Type, &e.u);
+		NetServerSendMsg(&gNetServer, NET_SERVER_BCAST, gee.Type, &e->u);
 	}
 	if (gee.Submit)
 	{
 		int actorUID = -1;
 		bool actorIsLocal = false;
-		switch (e.Type)
+		switch (e->Type)
 		{
 		case GAME_EVENT_ACTOR_MOVE:
-			actorUID = e.u.ActorMove.UID;
+			actorUID = e->u.ActorMove.UID;
 			break;
 		case GAME_EVENT_ACTOR_STATE:
-			actorUID = e.u.ActorState.UID;
+			actorUID = e->u.ActorState.UID;
 			break;
 		case GAME_EVENT_ACTOR_DIR:
-			actorUID = e.u.ActorDir.UID;
+			actorUID = e->u.ActorDir.UID;
 			break;
 		case GAME_EVENT_ACTOR_SLIDE:
-			actorUID = e.u.ActorSlide.UID;
+			actorUID = e->u.ActorSlide.UID;
 			break;
 		case GAME_EVENT_ACTOR_SWITCH_GUN:
-			actorUID = e.u.ActorSwitchGun.UID;
+			actorUID = e->u.ActorSwitchGun.UID;
 			break;
 		case GAME_EVENT_ACTOR_PICKUP_ALL:
-			actorUID = e.u.ActorPickupAll.UID;
+			actorUID = e->u.ActorPickupAll.UID;
 			break;
 		case GAME_EVENT_ACTOR_USE_AMMO:
-			actorUID = e.u.UseAmmo.UID;
+			actorUID = e->u.UseAmmo.UID;
 			break;
 		case GAME_EVENT_ACTOR_MELEE:
-			actorUID = e.u.Melee.UID;
+			actorUID = e->u.Melee.UID;
 			break;
 		case GAME_EVENT_ACTOR_PILOT:
-			actorUID = e.u.Pilot.UID;
+			actorUID = e->u.Pilot.UID;
 			break;
 		case GAME_EVENT_GUN_FIRE:
-			if (e.u.GunFire.IsGun)
+			if (e->u.GunFire.IsGun)
 			{
-				actorUID = e.u.GunFire.ActorUID;
+				actorUID = e->u.GunFire.ActorUID;
 			}
 			break;
 		case GAME_EVENT_GUN_RELOAD:
-			actorIsLocal = PlayerIsLocal(e.u.GunReload.PlayerUID);
+			actorIsLocal = PlayerIsLocal(e->u.GunReload.PlayerUID);
 			break;
 		case GAME_EVENT_GUN_STATE:
-			actorUID = e.u.GunState.ActorUID;
+			actorUID = e->u.GunState.ActorUID;
 			break;
 		default:
 			break;
@@ -193,11 +200,11 @@ void GameEventsEnqueue(CArray *store, GameEvent e)
 		}
 		if (actorIsLocal)
 		{
-			NetClientSendMsg(&gNetClient, gee.Type, &e.u);
+			NetClientSendMsg(&gNetClient, gee.Type, &e->u);
 		}
 	}
 
-	CArrayPushBack(store, &e);
+	CArrayPushBack(store, e);
 }
 static bool EventComplete(const void *elem);
 void GameEventsClear(CArray *store)
@@ -298,6 +305,7 @@ GameEvent GameEventNew(GameEventType type)
 	}
 	return e;
 }
+
 GameEvent GameEventNewActorAdd(const struct vec2 pos, const Character *c, const PlayerData *p)
 {
 	GameEvent e = GameEventNew(GAME_EVENT_ACTOR_ADD);

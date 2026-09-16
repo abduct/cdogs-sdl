@@ -143,7 +143,7 @@ bool PauseMenuUpdate(
 				// Quit
 				GameEvent e = GameEventNew(GAME_EVENT_MISSION_END);
 				e.u.MissionEnd.IsQuit = true;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 				// Need to unpause to process the quit
 				pm->pausingDevice = INPUT_DEVICE_UNSET;
 				pm->controllerUnplugged = false;

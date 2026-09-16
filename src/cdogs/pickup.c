@@ -106,7 +106,7 @@ void PickupAddGun(const WeaponClass *w, const struct vec2 pos)
 	GameEvent e = GameEventNew(GAME_EVENT_ADD_PICKUP);
 	sprintf(e.u.AddPickup.PickupClass, "gun_%s", w->name);
 	e.u.AddPickup.Pos = Vec2ToNet(pos);
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 void PickupDestroy(const int uid)
 {

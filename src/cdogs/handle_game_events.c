@@ -27,6 +27,9 @@
 */
 #include "handle_game_events.h"
 
+#include <stdarg.h>
+#include <stdio.h>
+
 #include "actor_fire.h"
 #include "actor_placement.h"
 #include "actors.h"
@@ -44,8 +47,33 @@
 
 #define RELOAD_DISTANCE_PLUS 200
 
+/*
+ * Keep ~20KB GameEvent temporaries out of HandleGameEvent's frame.
+ * Late-sync applies thousands of TILE_SET events; a 21KB frame per call was
+ * implicated when crashes landed in unrelated media decoders with garbage
+ * object pointers (stbi / OPUS) mid-TILE_SET apply.
+ */
+static void EnqueueFloatingTextParticle(
+	const char *className, const struct vec2 pos, const int z, const int dz,
+	const char *fmt, ...)
+{
+	GameEvent s = GameEventNew(GAME_EVENT_ADD_PARTICLE);
+	s.u.AddParticle.Class = StrParticleClass(&gParticleClasses, className);
+	s.u.AddParticle.Pos = pos;
+	s.u.AddParticle.Z = z;
+	s.u.AddParticle.DZ = dz;
+	{
+		va_list ap;
+		va_start(ap, fmt);
+		vsnprintf(
+			s.u.AddParticle.Text, sizeof s.u.AddParticle.Text, fmt, ap);
+		va_end(ap);
+	}
+	GameEventsEnqueue(&gGameEvents, &s);
+}
+
 static void HandleGameEvent(
-	const GameEvent e, Camera *camera, PowerupSpawner *healthSpawner,
+	const GameEvent *e, Camera *camera, PowerupSpawner *healthSpawner,
 	CArray *ammoSpawners, SoundDevice *sd);
 void HandleGameEvents(
 	CArray *store, Camera *camera, PowerupSpawner *healthSpawner,
@@ -59,41 +87,46 @@ void HandleGameEvents(
 		{
 			continue;
 		}
-		HandleGameEvent(*e, camera, healthSpawner, ammoSpawners, sd);
+		HandleGameEvent(e, camera, healthSpawner, ammoSpawners, sd);
 	}
 	GameEventsClear(store);
 }
 static void HandleGameEvent(
-	const GameEvent e, Camera *camera, PowerupSpawner *healthSpawner,
+	const GameEvent *e, Camera *camera, PowerupSpawner *healthSpawner,
 	CArray *ammoSpawners, SoundDevice *sd)
 {
-	switch (e.Type)
+	switch (e->Type)
 	{
 	case GAME_EVENT_PLAYER_DATA:
-		PlayerDataAddOrUpdate(e.u.PlayerData);
+		PlayerDataAddOrUpdate(&e->u.PlayerData);
 		break;
 	case GAME_EVENT_PLAYER_REMOVE:
-		PlayerRemove(e.u.PlayerRemove.UID);
-		if (gPlayerDatas.size == 0)
+		PlayerRemove(e->u.PlayerRemove.UID);
+		if (camera != NULL && gPlayerDatas.size == 0)
 		{
 			// Waiting for players to join, follow the first one
 			camera->FollowNextPlayer = true;
 		}
 		break;
 	case GAME_EVENT_TILE_SET: {
-		struct vec2i pos = Net2Vec2i(e.u.TileSet.Pos);
+		struct vec2i pos = Net2Vec2i(e->u.TileSet.Pos);
+		const int run = e->u.TileSet.RunLength;
 		LOG(LM_MAP, LL_DEBUG, "set tile %s/%s/%s pos(%d, %d) x%d",
-			e.u.TileSet.ClassName, e.u.TileSet.DoorClassName,
-			e.u.TileSet.DoorClass2Name, pos.x, pos.y, e.u.TileSet.RunLength);
+			e->u.TileSet.ClassName, e->u.TileSet.DoorClassName,
+			e->u.TileSet.DoorClass2Name, pos.x, pos.y, run);
 		const TileClass *tileClass =
-			StrTileClass(gMap.TileClasses, e.u.TileSet.ClassName);
+			StrTileClass(gMap.TileClasses, e->u.TileSet.ClassName);
 		const TileClass *doorClass =
-			StrTileClass(gMap.TileClasses, e.u.TileSet.DoorClassName);
+			StrTileClass(gMap.TileClasses, e->u.TileSet.DoorClassName);
 		const TileClass *doorClass2 =
-			StrTileClass(gMap.TileClasses, e.u.TileSet.DoorClass2Name);
-		for (int i = 0; i <= e.u.TileSet.RunLength; i++)
+			StrTileClass(gMap.TileClasses, e->u.TileSet.DoorClass2Name);
+		for (int i = 0; i <= run; i++)
 		{
 			Tile *t = MapGetTile(&gMap, pos);
+			if (t == NULL)
+			{
+				break;
+			}
 			t->Class = tileClass;
 			t->Door.Class = doorClass;
 			t->Door.Class2 = doorClass2;
@@ -108,33 +141,33 @@ static void HandleGameEvent(
 	}
 	break;
 	case GAME_EVENT_THING_DAMAGE:
-		ThingDamage(e.u.ThingDamage);
+		ThingDamage(e->u.ThingDamage);
 		break;
 	case GAME_EVENT_MAP_OBJECT_ADD:
-		ObjAdd(e.u.MapObjectAdd);
+		ObjAdd(e->u.MapObjectAdd);
 		break;
 	case GAME_EVENT_MAP_OBJECT_REMOVE:
-		ObjRemove(e.u.MapObjectRemove);
+		ObjRemove(e->u.MapObjectRemove);
 		break;
 	case GAME_EVENT_CONFIG: {
 		// Temporarily set config
-		Config *c = ConfigGet(&gConfig, e.u.Config.Name);
+		Config *c = ConfigGet(&gConfig, e->u.Config.Name);
 		switch (c->Type)
 		{
 		case CONFIG_TYPE_STRING:
 			CASSERT(false, "unimplemented");
 			break;
 		case CONFIG_TYPE_INT:
-			c->u.Int.Value = atoi(e.u.Config.Value);
+			c->u.Int.Value = atoi(e->u.Config.Value);
 			break;
 		case CONFIG_TYPE_FLOAT:
-			c->u.Float.Value = atof(e.u.Config.Value);
+			c->u.Float.Value = atof(e->u.Config.Value);
 			break;
 		case CONFIG_TYPE_BOOL:
-			c->u.Bool.Value = strcmp(e.u.Config.Value, "true") == 0;
+			c->u.Bool.Value = strcmp(e->u.Config.Value, "true") == 0;
 			break;
 		case CONFIG_TYPE_ENUM:
-			c->u.Enum.Value = atoi(e.u.Config.Value);
+			c->u.Enum.Value = atoi(e->u.Config.Value);
 			break;
 		case CONFIG_TYPE_GROUP:
 			CASSERT(false, "Cannot send groups over net");
@@ -149,29 +182,33 @@ static void HandleGameEvent(
 		// No score for dogfight
 		if (gCampaign.Entry.Mode != GAME_MODE_DOGFIGHT)
 		{
-			PlayerData *p = PlayerDataGetByUID(e.u.Score.PlayerUID);
-			PlayerScore(p, e.u.Score.Score);
+			PlayerData *p = PlayerDataGetByUID(e->u.Score.PlayerUID);
+			PlayerScore(p, e->u.Score.Score);
 			if (camera != NULL)
 			{
 				HUDNumPopupsAdd(
 					&camera->HUD.numPopups, NUMBER_POPUP_SCORE,
-					e.u.Score.PlayerUID, e.u.Score.Score);
+					e->u.Score.PlayerUID, e->u.Score.Score);
 			}
 		}
 		break;
 	case GAME_EVENT_SOUND_AT:
 		SoundPlayAtPlusDistance(
-			sd, StrSound(e.u.SoundAt.Sound), NetToVec2(e.u.SoundAt.Pos),
-			e.u.SoundAt.Distance);
+			sd, StrSound(e->u.SoundAt.Sound), NetToVec2(e->u.SoundAt.Pos),
+			e->u.SoundAt.Distance);
 		break;
 	case GAME_EVENT_SCREEN_SHAKE:
-		if (e.u.Shake.CameraSubjectOnly &&
-			e.u.Shake.ActorUID != camera->FollowActorUID)
+		if (camera == NULL)
+		{
+			break;
+		}
+		if (e->u.Shake.CameraSubjectOnly &&
+			e->u.Shake.ActorUID != camera->FollowActorUID)
 		{
 			break;
 		}
 		camera->shake = ScreenShakeAdd(
-			camera->shake, e.u.Shake.Amount,
+			camera->shake, e->u.Shake.Amount,
 			ConfigGetInt(&gConfig, "Graphics.ShakeMultiplier"));
 		// Weak rumble for all joysticks
 		CA_FOREACH(Joystick, j, gEventHandlers.joysticks)
@@ -179,49 +216,52 @@ static void HandleGameEvent(
 		CA_FOREACH_END()
 		break;
 	case GAME_EVENT_SET_MESSAGE:
-		HUDDisplayMessage(
-			&camera->HUD, e.u.SetMessage.Message, e.u.SetMessage.Ticks);
+		if (camera != NULL)
+		{
+			HUDDisplayMessage(
+				&camera->HUD, e->u.SetMessage.Message, e->u.SetMessage.Ticks);
+		}
 		break;
 	case GAME_EVENT_GAME_START:
 		gMission.HasStarted = true;
 		gMission.HasBegun = false;
 		break;
 	case GAME_EVENT_GAME_BEGIN:
-		MissionBegin(&gMission, e.u.GameBegin);
+		MissionBegin(&gMission, e->u.GameBegin);
 		break;
 	case GAME_EVENT_ACTOR_ADD: {
-		ActorAdd(e.u.ActorAdd);
-		const TActor *a = ActorGetByUID(e.u.ActorAdd.UID);
+		ActorAdd(e->u.ActorAdd);
+		const TActor *a = ActorGetByUID(e->u.ActorAdd.UID);
 		// Spawn sound for player actors
-		if (e.u.ActorAdd.PlayerUID >= 0)
+		if (e->u.ActorAdd.PlayerUID >= 0 && a != NULL && a->isInUse)
 		{
 			SoundPlayAt(sd, StrSound("spawn"), a->Pos);
 		}
 	}
 	break;
 	case GAME_EVENT_ACTOR_MOVE:
-		ActorMove(e.u.ActorMove);
+		ActorMove(e->u.ActorMove);
 		break;
 	case GAME_EVENT_ACTOR_STATE: {
-		TActor *a = ActorGetByUID(e.u.ActorState.UID);
-		if (!a->isInUse)
+		TActor *a = ActorGetByUID(e->u.ActorState.UID);
+		if (a == NULL || !a->isInUse)
 			break;
 		a->anim =
-			AnimationGetActorAnimation((ActorAnimation)e.u.ActorState.State);
+			AnimationGetActorAnimation((ActorAnimation)e->u.ActorState.State);
 	}
 	break;
 	case GAME_EVENT_ACTOR_DIR: {
-		TActor *a = ActorGetByUID(e.u.ActorDir.UID);
-		if (!a->isInUse)
+		TActor *a = ActorGetByUID(e->u.ActorDir.UID);
+		if (a == NULL || !a->isInUse)
 			break;
-		a->direction = (direction_e)e.u.ActorDir.Dir;
+		a->direction = (direction_e)e->u.ActorDir.Dir;
 	}
 	break;
 	case GAME_EVENT_ACTOR_SLIDE: {
-		TActor *a = ActorGetByUID(e.u.ActorSlide.UID);
-		if (!a->isInUse)
+		TActor *a = ActorGetByUID(e->u.ActorSlide.UID);
+		if (a == NULL || !a->isInUse)
 			break;
-		a->thing.Vel = NetToVec2(e.u.ActorSlide.Vel);
+		a->thing.Vel = NetToVec2(e->u.ActorSlide.Vel);
 		// Slide sound
 		if (ConfigGetBool(&gConfig, "Sound.Footsteps"))
 		{
@@ -230,12 +270,12 @@ static void HandleGameEvent(
 	}
 	break;
 	case GAME_EVENT_ACTOR_IMPULSE: {
-		TActor *a = ActorGetByUID(e.u.ActorImpulse.UID);
-		if (!a->isInUse)
+		TActor *a = ActorGetByUID(e->u.ActorImpulse.UID);
+		if (a == NULL || !a->isInUse)
 			break;
 		a->thing.Vel =
-			svec2_add(a->thing.Vel, NetToVec2(e.u.ActorImpulse.Vel));
-		const struct vec2 pos = NetToVec2(e.u.ActorImpulse.Pos);
+			svec2_add(a->thing.Vel, NetToVec2(e->u.ActorImpulse.Vel));
+		const struct vec2 pos = NetToVec2(e->u.ActorImpulse.Pos);
 		if (!svec2_is_zero(pos))
 		{
 			a->Pos = pos;
@@ -243,86 +283,74 @@ static void HandleGameEvent(
 	}
 	break;
 	case GAME_EVENT_ACTOR_SWITCH_GUN:
-		ActorSwitchGun(e.u.ActorSwitchGun);
+		ActorSwitchGun(e->u.ActorSwitchGun);
 		break;
 	case GAME_EVENT_ACTOR_PICKUP_ALL: {
-		TActor *a = ActorGetByUID(e.u.ActorPickupAll.UID);
-		if (!a->isInUse)
+		TActor *a = ActorGetByUID(e->u.ActorPickupAll.UID);
+		if (a == NULL || !a->isInUse)
 			break;
-		a->PickupAll = e.u.ActorPickupAll.PickupAll;
+		a->PickupAll = e->u.ActorPickupAll.PickupAll;
 	}
 	break;
 	case GAME_EVENT_ACTOR_REPLACE_GUN:
-		ActorReplaceGun(e.u.ActorReplaceGun);
+		ActorReplaceGun(e->u.ActorReplaceGun);
 		break;
 	case GAME_EVENT_ACTOR_HEAL: {
-		TActor *a = ActorGetByUID(e.u.Heal.UID);
-		if (!a->isInUse || a->dead)
+		TActor *a = ActorGetByUID(e->u.Heal.UID);
+		if (a == NULL || !a->isInUse || a->dead)
 			break;
-		ActorHeal(a, e.u.Heal.Amount, e.u.Heal.ExceedMax);
+		ActorHeal(a, e->u.Heal.Amount, e->u.Heal.ExceedMax);
 		// Tell the spawner that we took a health so we can
 		// spawn more (but only if we're the server)
-		if (e.u.Heal.IsRandomSpawned && !gCampaign.IsClient)
+		if (e->u.Heal.IsRandomSpawned && !gCampaign.IsClient)
 		{
 			PowerupSpawnerRemoveOne(healthSpawner);
 		}
-		if (e.u.Heal.PlayerUID >= 0)
+		if (e->u.Heal.PlayerUID >= 0)
 		{
-			GameEvent s = GameEventNew(GAME_EVENT_ADD_PARTICLE);
-			s.u.AddParticle.Class =
-				StrParticleClass(&gParticleClasses, "heal_text");
-			s.u.AddParticle.Pos = a->Pos;
-			s.u.AddParticle.Z = BULLET_Z * Z_FACTOR;
-			s.u.AddParticle.DZ = 3;
-			sprintf(s.u.AddParticle.Text, "+%d", (int)e.u.Heal.Amount);
-			GameEventsEnqueue(&gGameEvents, s);
+			EnqueueFloatingTextParticle(
+				"heal_text", a->Pos, BULLET_Z * Z_FACTOR, 3, "+%d",
+				(int)e->u.Heal.Amount);
 		}
 	}
 	break;
 	case GAME_EVENT_ACTOR_ADD_AMMO: {
-		TActor *a = ActorGetByUID(e.u.AddAmmo.UID);
-		if (!a->isInUse || a->dead)
+		TActor *a = ActorGetByUID(e->u.AddAmmo.UID);
+		if (a == NULL || !a->isInUse || a->dead)
 			break;
-		ActorAddAmmo(a, e.u.AddAmmo.Ammo.Id, e.u.AddAmmo.Ammo.Amount);
+		ActorAddAmmo(a, e->u.AddAmmo.Ammo.Id, e->u.AddAmmo.Ammo.Amount);
 		// Tell the spawner that we took ammo so we can
 		// spawn more (but only if we're the server)
-		if (e.u.AddAmmo.IsRandomSpawned && gCampaign.Setting.RandomPickups &&
+		if (e->u.AddAmmo.IsRandomSpawned && gCampaign.Setting.RandomPickups &&
 			!gCampaign.IsClient)
 		{
 			PowerupSpawnerRemoveOne(
-				CArrayGet(ammoSpawners, e.u.AddAmmo.Ammo.Id));
+				CArrayGet(ammoSpawners, e->u.AddAmmo.Ammo.Id));
 		}
-		if (e.u.AddAmmo.PlayerUID >= 0)
+		if (e->u.AddAmmo.PlayerUID >= 0)
 		{
-			GameEvent s = GameEventNew(GAME_EVENT_ADD_PARTICLE);
-			s.u.AddParticle.Class =
-				StrParticleClass(&gParticleClasses, "ammo_text");
-			s.u.AddParticle.Pos = a->Pos;
-			s.u.AddParticle.Z = BULLET_Z * Z_FACTOR;
-			s.u.AddParticle.DZ = 10;
-			const Ammo *ammo = AmmoGetById(&gAmmo, e.u.AddAmmo.Ammo.Id);
-			sprintf(
-				s.u.AddParticle.Text, "+%d %s", (int)e.u.AddAmmo.Ammo.Amount,
-				ammo->Name);
-			GameEventsEnqueue(&gGameEvents, s);
+			const Ammo *ammo = AmmoGetById(&gAmmo, e->u.AddAmmo.Ammo.Id);
+			EnqueueFloatingTextParticle(
+				"ammo_text", a->Pos, BULLET_Z * Z_FACTOR, 10, "+%d %s",
+				(int)e->u.AddAmmo.Ammo.Amount, ammo->Name);
 		}
 	}
 	break;
 	case GAME_EVENT_ACTOR_USE_AMMO: {
-		TActor *a = ActorGetByUID(e.u.UseAmmo.UID);
-		if (!a->isInUse || a->dead)
+		TActor *a = ActorGetByUID(e->u.UseAmmo.UID);
+		if (a == NULL || !a->isInUse || a->dead)
 			break;
 		const int ammoBefore =
-			*(int *)CArrayGet(&a->ammo, e.u.UseAmmo.Ammo.Id);
-		const Ammo *ammo = AmmoGetById(&gAmmo, e.u.UseAmmo.Ammo.Id);
+			*(int *)CArrayGet(&a->ammo, e->u.UseAmmo.Ammo.Id);
+		const Ammo *ammo = AmmoGetById(&gAmmo, e->u.UseAmmo.Ammo.Id);
 		const bool wasAmmoLow = AmmoIsLow(ammo, ammoBefore);
-		ActorAddAmmo(a, e.u.UseAmmo.Ammo.Id, -(int)e.u.UseAmmo.Ammo.Amount);
-		const PlayerData *p = PlayerDataGetByUID(e.u.UseAmmo.PlayerUID);
+		ActorAddAmmo(a, e->u.UseAmmo.Ammo.Id, -(int)e->u.UseAmmo.Ammo.Amount);
+		const PlayerData *p = PlayerDataGetByUID(e->u.UseAmmo.PlayerUID);
 		if (p != NULL && p->IsLocal)
 		{
 			// Show low or no ammo notifications
 			const int ammoAfter =
-				*(int *)CArrayGet(&a->ammo, e.u.UseAmmo.Ammo.Id);
+				*(int *)CArrayGet(&a->ammo, e->u.UseAmmo.Ammo.Id);
 			const bool isAmmoLow = AmmoIsLow(ammo, ammoAfter);
 			if (ammoAfter == 0)
 			{
@@ -338,7 +366,9 @@ static void HandleGameEvent(
 	}
 	break;
 	case GAME_EVENT_ACTOR_DIE: {
-		TActor *a = ActorGetByUID(e.u.ActorDie.UID);
+		TActor *a = ActorGetByUID(e->u.ActorDie.UID);
+		if (a == NULL || !a->isInUse)
+			break;
 
 		// Check if the player has lives to revive
 		PlayerData *p = PlayerDataGetByUID(a->PlayerUID);
@@ -364,94 +394,88 @@ static void HandleGameEvent(
 	}
 	break;
 	case GAME_EVENT_ACTOR_BARK:
-		ActorBark(e.u.Bark);
+		ActorBark(e->u.Bark);
 		break;
 	case GAME_EVENT_PLAYER_ADD_LIVES: {
-		PlayerData *p = PlayerDataGetByUID(e.u.PlayerAddLives.UID);
-		p->Lives += e.u.PlayerAddLives.Lives;
+		PlayerData *p = PlayerDataGetByUID(e->u.PlayerAddLives.UID);
+		p->Lives += e->u.PlayerAddLives.Lives;
 		const TActor *a = ActorGetByUID(p->ActorUID);
 		if (a && a->isInUse && !a->dead)
 		{
-			GameEvent s = GameEventNew(GAME_EVENT_ADD_PARTICLE);
-			s.u.AddParticle.Class =
-				StrParticleClass(&gParticleClasses, "lives_text");
-			s.u.AddParticle.Pos = a->Pos;
-			s.u.AddParticle.Z = BULLET_Z * Z_FACTOR;
-			s.u.AddParticle.DZ = 4;
-			sprintf(
-				s.u.AddParticle.Text, "+%d %s", (int)e.u.PlayerAddLives.Lives,
-				e.u.PlayerAddLives.Lives > 1 ? "Lives" : "Life");
-			GameEventsEnqueue(&gGameEvents, s);
+			EnqueueFloatingTextParticle(
+				"lives_text", a->Pos, BULLET_Z * Z_FACTOR, 4, "+%d %s",
+				(int)e->u.PlayerAddLives.Lives,
+				e->u.PlayerAddLives.Lives > 1 ? "Lives" : "Life");
 		}
 	}
 	break;
 	case GAME_EVENT_ACTOR_MELEE:
-		DamageMelee(e.u.Melee);
+		DamageMelee(e->u.Melee);
 		break;
 	case GAME_EVENT_ACTOR_PILOT:
-		ActorPilot(e.u.Pilot);
+		ActorPilot(e->u.Pilot);
 		break;
 	case GAME_EVENT_ADD_PICKUP:
-		PickupAdd(e.u.AddPickup);
+		PickupAdd(e->u.AddPickup);
 		// Play a spawn sound
-		SoundPlayAt(sd, StrSound("spawn_item"), NetToVec2(e.u.AddPickup.Pos));
+		SoundPlayAt(sd, StrSound("spawn_item"), NetToVec2(e->u.AddPickup.Pos));
 		break;
 	case GAME_EVENT_REMOVE_PICKUP:
-		PickupDestroy(e.u.RemovePickup.UID);
-		if (e.u.RemovePickup.SpawnerUID >= 0)
+		PickupDestroy(e->u.RemovePickup.UID);
+		if (e->u.RemovePickup.SpawnerUID >= 0)
 		{
-			TObject *o = ObjGetByUID(e.u.RemovePickup.SpawnerUID);
+			TObject *o = ObjGetByUID(e->u.RemovePickup.SpawnerUID);
 			o->counter = AMMO_SPAWNER_RESPAWN_TICKS;
 		}
 		break;
 	case GAME_EVENT_BULLET_BOUNCE:
-		BulletBounce(e.u.BulletBounce);
+		BulletBounce(e->u.BulletBounce);
 		break;
 	case GAME_EVENT_REMOVE_BULLET: {
-		TMobileObject *o = MobObjGetByUID(e.u.RemoveBullet.UID);
+		TMobileObject *o = MobObjGetByUID(e->u.RemoveBullet.UID);
 		if (o == NULL || !o->isInUse)
 			break;
 		BulletDestroy(o);
 	}
 	break;
 	case GAME_EVENT_PARTICLE_REMOVE:
-		ParticleDestroy(&gParticles, e.u.ParticleRemoveId);
+		ParticleDestroy(&gParticles, e->u.ParticleRemoveId);
 		break;
 	case GAME_EVENT_GUN_FIRE:
-		OnGunFire(e.u.GunFire, sd);
+		OnGunFire(e->u.GunFire, sd);
 		break;
 	case GAME_EVENT_GUN_RELOAD: {
-		const WeaponClass *wc = StrWeaponClass(e.u.GunReload.Gun);
+		const WeaponClass *wc = StrWeaponClass(e->u.GunReload.Gun);
 		CASSERT(wc->Type != GUNTYPE_MULTI, "unexpected gun type");
-		const struct vec2 pos = NetToVec2(e.u.GunReload.Pos);
+		const struct vec2 pos = NetToVec2(e->u.GunReload.Pos);
 		SoundPlayAtPlusDistance(
 			sd, wc->u.Normal.ReloadSound, pos, RELOAD_DISTANCE_PLUS);
 		// Brass shells
 		if (wc->u.Normal.Brass && wc->u.Normal.ReloadLead != 0)
 		{
-			WeaponClassAddBrass(wc, (direction_e)e.u.GunReload.Direction, pos);
+			WeaponClassAddBrass(wc, (direction_e)e->u.GunReload.Direction, pos);
 		}
 	}
 	break;
 	case GAME_EVENT_GUN_STATE: {
-		TActor *a = ActorGetByUID(e.u.GunState.ActorUID);
-		if (!a->isInUse)
+		TActor *a = ActorGetByUID(e->u.GunState.ActorUID);
+		if (a == NULL || !a->isInUse)
 			break;
 		WeaponBarrelSetState(
-			ACTOR_GET_WEAPON(a), e.u.GunState.Barrel,
-			(gunstate_e)e.u.GunState.State);
+			ACTOR_GET_WEAPON(a), e->u.GunState.Barrel,
+			(gunstate_e)e->u.GunState.State);
 	}
 	break;
 	case GAME_EVENT_ADD_BULLET:
-		BulletAdd(e.u.AddBullet);
+		BulletAdd(e->u.AddBullet);
 		break;
 	case GAME_EVENT_ADD_PARTICLE:
-		ParticleAdd(&gParticles, e.u.AddParticle);
+		ParticleAdd(&gParticles, e->u.AddParticle);
 		break;
 	case GAME_EVENT_TRIGGER: {
-		const Tile *t = MapGetTile(&gMap, Net2Vec2i(e.u.TriggerEvent.Tile));
+		const Tile *t = MapGetTile(&gMap, Net2Vec2i(e->u.TriggerEvent.Tile));
 		CA_FOREACH(Trigger *, tp, t->triggers)
-		if ((*tp)->id == (int)e.u.TriggerEvent.ID)
+		if ((*tp)->id == (int)e->u.TriggerEvent.ID)
 		{
 			TriggerActivate(*tp, &gMap.triggers);
 			break;
@@ -461,10 +485,10 @@ static void HandleGameEvent(
 	break;
 	case GAME_EVENT_EXPLORE_TILES:
 		// Process runs of explored tiles
-		for (int i = 0; i < (int)e.u.ExploreTiles.Runs_count; i++)
+		for (int i = 0; i < (int)e->u.ExploreTiles.Runs_count; i++)
 		{
-			struct vec2i tile = Net2Vec2i(e.u.ExploreTiles.Runs[i].Tile);
-			for (int j = 0; j < e.u.ExploreTiles.Runs[i].Run; j++)
+			struct vec2i tile = Net2Vec2i(e->u.ExploreTiles.Runs[i].Tile);
+			for (int j = 0; j < e->u.ExploreTiles.Runs[i].Run; j++)
 			{
 				MapMarkAsVisited(&gMap, tile);
 				tile.x++;
@@ -477,7 +501,11 @@ static void HandleGameEvent(
 		}
 		break;
 	case GAME_EVENT_RESCUE_CHARACTER: {
-		TActor *a = ActorGetByUID(e.u.Rescue.UID);
+		TActor *a = ActorGetByUID(e->u.Rescue.UID);
+		if (a == NULL)
+		{
+			break;
+		}
 		if (!a->isInUse)
 			break;
 		a->flags &= ~FLAGS_PRISONER;
@@ -493,33 +521,27 @@ static void HandleGameEvent(
 	case GAME_EVENT_OBJECTIVE_UPDATE: {
 		Objective *o = CArrayGet(
 			&gMission.missionData->Objectives,
-			e.u.ObjectiveUpdate.ObjectiveId);
-		o->done += e.u.ObjectiveUpdate.Count;
+			e->u.ObjectiveUpdate.ObjectiveId);
+		o->done += e->u.ObjectiveUpdate.Count;
 		// Display a text update effect for the objective
 		if (camera != NULL)
 		{
 			HUDNumPopupsAdd(
 				&camera->HUD.numPopups, NUMBER_POPUP_OBJECTIVE,
-				e.u.ObjectiveUpdate.ObjectiveId, e.u.ObjectiveUpdate.Count);
+				e->u.ObjectiveUpdate.ObjectiveId, e->u.ObjectiveUpdate.Count);
 		}
 		MissionSetMessageIfComplete(&gMission);
 	}
 	break;
 	case GAME_EVENT_ADD_KEYS: {
-		gMission.KeyFlags |= e.u.AddKeys.KeyFlags;
+		gMission.KeyFlags |= e->u.AddKeys.KeyFlags;
 
-		const struct vec2 pos = NetToVec2(e.u.AddKeys.Pos);
+		const struct vec2 pos = NetToVec2(e->u.AddKeys.Pos);
 
 		if (!svec2_is_zero(pos))
 		{
-			GameEvent s = GameEventNew(GAME_EVENT_ADD_PARTICLE);
-			s.u.AddParticle.Class =
-				StrParticleClass(&gParticleClasses, "key_text");
-			s.u.AddParticle.Pos = pos;
-			s.u.AddParticle.Z = BULLET_Z * Z_FACTOR;
-			s.u.AddParticle.DZ = 10;
-			sprintf(s.u.AddParticle.Text, "+key");
-			GameEventsEnqueue(&gGameEvents, s);
+			EnqueueFloatingTextParticle(
+				"key_text", pos, BULLET_Z * Z_FACTOR, 10, "+key");
 		}
 
 		// Clear cache since we may now have new paths
@@ -527,12 +549,17 @@ static void HandleGameEvent(
 	}
 	break;
 	case GAME_EVENT_DOOR_TOGGLE: {
-		Tile *t = MapGetTile(&gMap, Net2Vec2i(e.u.DoorToggle.Pos));
-		DoorStateInit(&t->Door, e.u.DoorToggle.IsOpen);
+		const struct vec2i doorPos = Net2Vec2i(e->u.DoorToggle.Pos);
+		Tile *t = MapGetTile(&gMap, doorPos);
+		if (t == NULL)
+		{
+			break;
+		}
+		DoorStateInit(&t->Door, e->u.DoorToggle.IsOpen);
 	}
 	break;
 	case GAME_EVENT_MISSION_COMPLETE:
-		if (e.u.MissionComplete.ShowMsg)
+		if (e->u.MissionComplete.ShowMsg)
 		{
 			if (!gMission.MissionCompleted)
 			{
@@ -566,10 +593,10 @@ static void HandleGameEvent(
 		SoundPlay(sd, StrSound("whistle"));
 		break;
 	case GAME_EVENT_MISSION_END:
-		MissionDone(&gMission, e.u.MissionEnd);
-		if (e.u.MissionEnd.Msg[0] != '\0')
+		MissionDone(&gMission, e->u.MissionEnd);
+		if (camera != NULL && e->u.MissionEnd.Msg[0] != '\0')
 		{
-			HUDDisplayMessage(&camera->HUD, e.u.MissionEnd.Msg, -1);
+			HUDDisplayMessage(&camera->HUD, e->u.MissionEnd.Msg, -1);
 		}
 		break;
 	default:

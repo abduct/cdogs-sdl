@@ -41,14 +41,11 @@
 #include "player.h"
 #include "utils.h"
 
-
 NetClient gNetClient;
-
 
 #define CONNECTION_WAIT_MS 5000
 #define FIND_CONNECTION_WAIT_SECONDS 1
 #define TIMEOUT_MS 5000
-
 
 void NetClientInit(NetClient *n, const uint16_t port)
 {
@@ -61,7 +58,14 @@ void NetClientInit(NetClient *n, const uint16_t port)
 		14400 / 8 /* 56K modem with 14 Kbps upstream bandwidth */);
 	if (n->client == NULL)
 	{
-		LOG(LM_NET, LL_ERROR, "cannot create ENet client host");
+		LOG(LM_NET, LL_ERROR,
+			"cannot create ENet client host (errno=%d %s)", errno,
+			strerror(errno));
+	}
+	else
+	{
+		LOG(LM_NET, LL_INFO, "ENet client host created (scan listenPort=%u)",
+			(unsigned)port);
 	}
 	CArrayInit(&n->ScannedAddrs, sizeof(ScanInfo));
 	CArrayInit(&n->scannedAddrBuf, sizeof(ScanInfo));
@@ -94,7 +98,12 @@ void NetClientFindLANServers(NetClient *n)
 	{
 		return;
 	}
-	
+
+	LOG(LM_NET, LL_INFO,
+		"LAN scan: start (listenPort=%u ScannedAddrs=%u buf=%u clientHost=%s)",
+		(unsigned)n->port, (unsigned)n->ScannedAddrs.size,
+		(unsigned)n->scannedAddrBuf.size, n->client ? "ok" : "NULL");
+
 	// Replace the scanned addresses with the buffer
 	CArray temp = n->ScannedAddrs;
 	n->ScannedAddrs = n->scannedAddrBuf;
@@ -104,10 +113,12 @@ void NetClientFindLANServers(NetClient *n)
 	// Scan for servers on LAN using broadcast host
 	if (!TryScanHost(n, ENET_HOST_BROADCAST))
 	{
+		LOG(LM_NET, LL_ERROR, "LAN scan: TryScanHost(ENET_HOST_BROADCAST) failed");
 		return;
 	}
 
 	n->ScanTicks = FIND_CONNECTION_WAIT_SECONDS * FPS_FRAMELIMIT;
+	LOG(LM_NET, LL_INFO, "LAN scan: waiting %d ticks for replies", n->ScanTicks);
 }
 static bool TryScanHost(NetClient *n, const enet_uint32 host)
 {
@@ -117,31 +128,49 @@ static bool TryScanHost(NetClient *n, const enet_uint32 host)
 		n->scanner = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
 		if (n->scanner == ENET_SOCKET_NULL)
 		{
-			LOG(LM_NET, LL_ERROR, "Failed to create socket");
+			LOG(LM_NET, LL_ERROR,
+				"LAN scan: enet_socket_create(DATAGRAM) failed errno=%d (%s)",
+				errno, strerror(errno));
 			goto bail;
 		}
+		LOG(LM_NET, LL_INFO, "LAN scan: scanner socket created fd=%d",
+			(int)n->scanner);
 		if (enet_socket_set_option(n->scanner, ENET_SOCKOPT_BROADCAST, 1) != 0)
 		{
-			LOG(LM_NET, LL_ERROR, "Failed to enable broadcast socket");
+			LOG(LM_NET, LL_ERROR,
+				"LAN scan: SO_BROADCAST enable failed errno=%d (%s)", errno,
+				strerror(errno));
 			goto bail;
 		}
+		LOG(LM_NET, LL_INFO, "LAN scan: SO_BROADCAST enabled");
 	}
 
 	// Send the scanning message
 	ENetAddress addr;
 	addr.host = host;
 	addr.port = n->port;
-	// Send a dummy payload
 	char data = 42;
 	ENetBuffer sendbuf;
 	sendbuf.data = &data;
 	sendbuf.dataLength = 1;
-	if (enet_socket_send(n->scanner, &addr, &sendbuf, 1) !=
-		(int)sendbuf.dataLength)
+	char ipbuf[64];
+	if (enet_address_get_host_ip(&addr, ipbuf, sizeof ipbuf) < 0)
 	{
-		LOG(LM_NET, LL_ERROR, "Failed to scan for server");
+		snprintf(ipbuf, sizeof ipbuf, "0x%08X", (unsigned)host);
+	}
+	const int sent =
+		enet_socket_send(n->scanner, &addr, &sendbuf, 1);
+	if (sent != (int)sendbuf.dataLength)
+	{
+		LOG(LM_NET, LL_ERROR,
+			"LAN scan: sendto %s:%u failed sent=%d want=%d errno=%d (%s)",
+			ipbuf, (unsigned)addr.port, sent, (int)sendbuf.dataLength, errno,
+			strerror(errno));
 		goto bail;
 	}
+	LOG(LM_NET, LL_INFO, "LAN scan: sent %d byte(s) to %s:%u (broadcast=%s)",
+		sent, ipbuf, (unsigned)addr.port,
+		host == ENET_HOST_BROADCAST ? "yes" : "no");
 
 	return true;
 
@@ -240,25 +269,34 @@ static bool TryRecvScanForServerPort(
 	const int recvlen = enet_socket_receive(n->scanner, outAddr, &recvbuf, 1);
 	if (recvlen <= 0)
 	{
+		if (recvlen < 0 && errno != EWOULDBLOCK && errno != EAGAIN)
+		{
+			LOG(LM_NET, LL_ERROR,
+				"LAN scan: recvfrom failed recvlen=%d errno=%d (%s)", recvlen,
+				errno, strerror(errno));
+		}
 		return false;
 	}
 	pb_istream_t stream = pb_istream_from_buffer(buf, recvlen);
 	if (!pb_decode(&stream, NServerInfo_fields, outInfo))
 	{
-		LOG(LM_NET, LL_ERROR, "Failed to decode scan reply");
+		LOG(LM_NET, LL_ERROR,
+			"LAN scan: failed to decode scan reply (%d bytes)", recvlen);
 		return false;
 	}
 	// Check the protocol version, if it doesn't match we can't connect
 	if (outInfo->ProtocolVersion != NET_PROTOCOL_VERSION)
 	{
-		LOG(LM_NET, LL_DEBUG, "Protocol mismatch; %d (theirs) != %d",
+		LOG(LM_NET, LL_WARN,
+			"LAN scan: protocol mismatch; theirs=%d ours=%d",
 			outInfo->ProtocolVersion, NET_PROTOCOL_VERSION);
 		return false;
 	}
 	outAddr->port = (enet_uint16)outInfo->ENetPort;
 	char ipbuf[256];
 	enet_address_get_host_ip(outAddr, ipbuf, sizeof ipbuf);
-	LOG(LM_NET, LL_DEBUG, "Found server at %s:%u", ipbuf, outInfo->ENetPort);
+	LOG(LM_NET, LL_INFO, "LAN scan: reply from %s enetPort=%u host='%s'",
+		ipbuf, (unsigned)outInfo->ENetPort, outInfo->Hostname);
 	return true;
 }
 
@@ -370,7 +408,20 @@ static void Scanning(NetClient *n)
 		if (!found)
 		{
 			CArrayPushBack(&n->ScannedAddrs, &sinfo);
+			char ipbuf[256];
+			enet_address_get_host_ip(&sinfo.Addr, ipbuf, sizeof ipbuf);
+			LOG(LM_NET, LL_INFO,
+				"LAN scan: ScannedAddrs += %s:%u (total=%u latencyMs=%d)",
+				ipbuf, (unsigned)sinfo.Addr.port,
+				(unsigned)n->ScannedAddrs.size, sinfo.LatencyMS);
 		}
+	}
+
+	if (n->ScanTicks == 0)
+	{
+		LOG(LM_NET, LL_INFO,
+			"LAN scan: window ended ScannedAddrs=%u buf=%u",
+			(unsigned)n->ScannedAddrs.size, (unsigned)n->scannedAddrBuf.size);
 	}
 }
 static void OnReceive(NetClient *n, ENetEvent event)
@@ -436,7 +487,7 @@ static void OnReceive(NetClient *n, ENetEvent event)
 			}
 			else
 			{
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 		}
 	}
@@ -517,7 +568,8 @@ void NetClientSendMsg(NetClient *n, const GameEventType e, const void *data)
 	}
 
 	LOG(LM_NET, LL_TRACE, "NetClient: send msg type %d", (int)e);
-	enet_peer_send(n->peer, 0, NetEncode(e, data));
+	ENetPacket *packet = NetEncode(e, data);
+	enet_peer_send(n->peer, 0, packet);
 }
 
 bool NetClientIsConnected(const NetClient *n)

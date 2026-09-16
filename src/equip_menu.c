@@ -35,7 +35,7 @@
 #include <cdogs/draw/drawtools.h>
 #include <cdogs/draw/nine_slice.h>
 #include <cdogs/font.h>
-
+#include <cdogs/gamedata.h>
 #include "material.h"
 
 #define NO_GUN_LABEL "(None)"

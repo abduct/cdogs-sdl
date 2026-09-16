@@ -234,7 +234,7 @@ void UpdateActorState(TActor *actor, int ticks)
 				GameEvent e = GameEventNew(GAME_EVENT_ADD_PICKUP);
 				strcpy(e.u.AddPickup.PickupClass, c->Drop->Name);
 				e.u.AddPickup.Pos = Vec2ToNet(actor->Pos);
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 			else if (!gCampaign.Setting.BuyAndSell)
 			{
@@ -293,7 +293,7 @@ void UpdateActorState(TActor *actor, int ticks)
 			MatGetFootstepSound(c->Class, t, e.u.SoundAt.Sound);
 			e.u.SoundAt.Pos = Vec2ToNet(actor->thing.Pos);
 			e.u.SoundAt.Distance = c->Class->FootstepsDistancePlus;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 
 		// See if we've stepped on something that leaves footprints
@@ -321,7 +321,7 @@ void UpdateActorState(TActor *actor, int ticks)
 				actor->footprintCounter * e.u.AddParticle.Mask.a /
 					FOOTPRINT_MAX,
 				255);
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 			actor->footprintCounter--;
 		}
 	}
@@ -338,7 +338,7 @@ void UpdateActorState(TActor *actor, int ticks)
 			e.u.ThingDamage.UID = actor->uid;
 			e.u.ThingDamage.Kind = KIND_CHARACTER;
 			BulletToDamageEvent(b, &e);
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 	}
 
@@ -432,7 +432,7 @@ static bool TryMoveActor(TActor *actor, struct vec2 pos)
 				GameEvent e = GameEventNew(GAME_EVENT_ACTOR_SWITCH_GUN);
 				e.u.ActorSwitchGun.UID = actor->uid;
 				e.u.ActorSwitchGun.GunIdx = MELEE_SLOT;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 			else
 			{
@@ -476,7 +476,7 @@ static bool TryMoveActor(TActor *actor, struct vec2 pos)
 							{
 								e.u.Melee.HitType = (int)HIT_NONE;
 							}
-							GameEventsEnqueue(&gGameEvents, e);
+							GameEventsEnqueue(&gGameEvents, &e);
 							WeaponBarrelOnFire(gun, barrel);
 
 							// Only set grimace when counter 0 so that the
@@ -705,7 +705,7 @@ static void CheckTrigger(const TActor *a, const Map *map)
 		s.u.AddParticle.Pos = Vec2CenterOfTile(tilePos);
 		s.u.AddParticle.Z = (BULLET_Z * 2) * Z_FACTOR;
 		sprintf(s.u.AddParticle.Text, "locked");
-		GameEventsEnqueue(&gGameEvents, s);
+		GameEventsEnqueue(&gGameEvents, &s);
 	}
 	CA_FOREACH_END()
 }
@@ -762,7 +762,7 @@ static void CheckPilot(const TActor *a, const CollisionParams params)
 	e.u.Pilot.On = true;
 	e.u.Pilot.UID = a->uid;
 	e.u.Pilot.VehicleUID = vehicle->uid;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 static void CheckRescue(const TActor *a)
 {
@@ -789,7 +789,7 @@ static void CheckRescue(const TActor *a)
 			other->flags &= ~FLAGS_PRISONER;
 			GameEvent e = GameEventNew(GAME_EVENT_RESCUE_CHARACTER);
 			e.u.Rescue.UID = other->uid;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 			UpdateMissionObjective(
 				&gMission, other->thing.flags, OBJECTIVE_RESCUE, 1);
 		}
@@ -825,13 +825,13 @@ void InjureActor(TActor *actor, int injury)
 		CharacterClassGetSound(
 			ActorGetCharacter(actor)->Class, es.u.Bark.Sound, "die");
 		es.u.Bark.UID = actor->uid;
-		GameEventsEnqueue(&gGameEvents, es);
+		GameEventsEnqueue(&gGameEvents, &es);
 		if (actor->PlayerUID >= 0)
 		{
 			es = GameEventNew(GAME_EVENT_SOUND_AT);
 			strcpy(es.u.SoundAt.Sound, "hahaha");
 			es.u.SoundAt.Pos = Vec2ToNet(actor->thing.Pos);
-			GameEventsEnqueue(&gGameEvents, es);
+			GameEventsEnqueue(&gGameEvents, &es);
 		}
 		if (actor->thing.flags & THING_OBJECTIVE)
 		{
@@ -1020,7 +1020,7 @@ static void FireWeapon(TActor *a, Weapon *w)
 		GameEvent e = GameEventNew(GAME_EVENT_ACTOR_SWITCH_GUN);
 		e.u.ActorSwitchGun.UID = a->uid;
 		e.u.ActorSwitchGun.GunIdx = a->lastGunIdx;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		return;
 	}
 	const int barrel = ActorGetCanFireBarrel(a, w);
@@ -1038,7 +1038,7 @@ static void FireWeapon(TActor *a, Weapon *w)
 				GameEvent es = GameEventNew(GAME_EVENT_SOUND_AT);
 				strcpy(es.u.SoundAt.Sound, "click");
 				es.u.SoundAt.Pos = Vec2ToNet(a->Pos);
-				GameEventsEnqueue(&gGameEvents, es);
+				GameEventsEnqueue(&gGameEvents, &es);
 				w->clickLock = SOUND_LOCK_WEAPON_CLICK;
 			}
 		}
@@ -1053,7 +1053,7 @@ static void FireWeapon(TActor *a, Weapon *w)
 		e.u.UseAmmo.PlayerUID = a->PlayerUID;
 		e.u.UseAmmo.Ammo.Id = ammoId;
 		e.u.UseAmmo.Ammo.Amount = 1;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	const TActor *firingActor = ActorGetByUID(a->pilotUID);
 	const int cost = WC_BARREL_ATTR(*(w->Gun), Cost, barrel);
@@ -1063,7 +1063,7 @@ static void FireWeapon(TActor *a, Weapon *w)
 		GameEvent e = GameEventNew(GAME_EVENT_SCORE);
 		e.u.Score.PlayerUID = firingActor->PlayerUID;
 		e.u.Score.Score = -cost;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 }
 
@@ -1082,7 +1082,7 @@ static bool ActorTryChangeDirection(
 		GameEvent e = GameEventNew(GAME_EVENT_ACTOR_DIR);
 		e.u.ActorDir.UID = actor->uid;
 		e.u.ActorDir.Dir = (int32_t)dir;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		// Change direction immediately because this affects shooting
 		actor->direction = dir;
 	}
@@ -1108,7 +1108,7 @@ static bool ActorTryShoot(TActor *actor, const int cmd)
 				e.u.GunState.ActorUID = actor->uid;
 				e.u.GunState.Barrel = i;
 				e.u.GunState.State = GUNSTATE_READY;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 		}
 	}
@@ -1156,7 +1156,7 @@ int CommandActor(TActor *actor, int cmd, int ticks)
 					e = GameEventNew(GAME_EVENT_SOUND_AT);
 					strcpy(e.u.SoundAt.Sound, sound);
 					e.u.SoundAt.Pos = Vec2ToNet(actor->thing.Pos);
-					GameEventsEnqueue(&gGameEvents, e);
+					GameEventsEnqueue(&gGameEvents, &e);
 				}
 			}
 			actor->pickupMenu.pickup = NULL;
@@ -1237,7 +1237,7 @@ int CommandActor(TActor *actor, int cmd, int ticks)
 					e = GameEventNew(GAME_EVENT_ACTOR_STATE);
 					e.u.ActorState.UID = actor->uid;
 					e.u.ActorState.State = (int32_t)anim;
-					GameEventsEnqueue(&gGameEvents, e);
+					GameEventsEnqueue(&gGameEvents, &e);
 					actor->anim = AnimationGetActorAnimation(anim);
 				}
 			}
@@ -1253,7 +1253,7 @@ int CommandActor(TActor *actor, int cmd, int ticks)
 				e = GameEventNew(GAME_EVENT_ACTOR_PICKUP_ALL);
 				e.u.ActorPickupAll.UID = actor->uid;
 				e.u.ActorPickupAll.PickupAll = true;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 		}
 	}
@@ -1300,7 +1300,7 @@ static bool ActorTryMove(TActor *actor, int cmd, int ticks)
 		e.u.ActorMove.UID = actor->uid;
 		e.u.ActorMove.Pos = Vec2ToNet(actor->Pos);
 		e.u.ActorMove.MoveVel = Vec2ToNet(actor->MoveVel);
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 
 	return willMove || !svec2_is_zero(actor->thing.Vel);
@@ -1334,7 +1334,7 @@ void SlideActor(TActor *actor, int cmd)
 	else if (Down(cmd))
 		vel.y = SLIDE_Y;
 	e.u.ActorSlide.Vel = Vec2ToNet(vel);
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 
 	actor->slideLock = SLIDE_LOCK;
 }
@@ -1409,11 +1409,11 @@ void UpdateAllActors(const int ticks)
 				e.u.ActorImpulse.UID = actor->uid;
 				e.u.ActorImpulse.Vel = Vec2ToNet(v);
 				e.u.ActorImpulse.Pos = Vec2ToNet(actor->Pos);
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 				e.u.ActorImpulse.UID = collidingActor->uid;
 				e.u.ActorImpulse.Vel = Vec2ToNet(svec2_scale(v, -1));
 				e.u.ActorImpulse.Pos = Vec2ToNet(collidingActor->Pos);
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 		}
 	}
@@ -1597,12 +1597,12 @@ static void ActorDie(TActor *actor)
 		ea.u.MapObjectAdd.Pos = Vec2ToNet(actor->Pos);
 		ea.u.MapObjectAdd.ThingFlags = MapObjectGetFlags(corpse);
 		ea.u.MapObjectAdd.Health = corpse->Health;
-		GameEventsEnqueue(&gGameEvents, ea);
+		GameEventsEnqueue(&gGameEvents, &ea);
 	}
 
 	GameEvent e = GameEventNew(GAME_EVENT_ACTOR_DIE);
 	e.u.ActorDie.UID = actor->uid;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 
 	// Persist player ammo for when they respawn
 	ActorPersistPlayerWeaponsAndAmmo(actor);
@@ -1646,7 +1646,7 @@ static void ActorAddAmmoPickup(const TActor *actor)
 				(float)RAND_INT(-TILE_WIDTH, TILE_WIDTH) / 2,
 				(float)RAND_INT(-TILE_HEIGHT, TILE_HEIGHT) / 2);
 			e.u.AddPickup.Pos = Vec2ToNet(svec2_add(actor->Pos, offset));
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 	}
 }
@@ -1749,7 +1749,7 @@ static void VehicleTakePilot(const TActor *vehicle)
 		e.u.Pilot.On = true;
 		e.u.Pilot.UID = pilot->uid;
 		e.u.Pilot.VehicleUID = vehicle->uid;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 		break;
 	}
 	CA_FOREACH_END()
@@ -1895,7 +1895,7 @@ TActor *ActorAdd(NActorAdd aa)
 			{
 				GameEvent e = GameEventNew(GAME_EVENT_RESCUE_CHARACTER);
 				e.u.Rescue.UID = aa.UID;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 				UpdateMissionObjective(
 					&gMission, actor->thing.flags, OBJECTIVE_RESCUE, 1);
 			}
@@ -2121,7 +2121,7 @@ bool ActorTrySwitchWeapon(const TActor *a)
 	GameEvent e = GameEventNew(GAME_EVENT_ACTOR_SWITCH_GUN);
 	e.u.ActorSwitchGun.UID = a->uid;
 	e.u.ActorSwitchGun.GunIdx = weaponIndex;
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 	return true;
 }
 void ActorSwitchGun(const NActorSwitchGun sg)
@@ -2156,7 +2156,7 @@ void ActorPickupGun(const TActor *a, const WeaponClass *wc)
 			GameEvent e = GameEventNew(GAME_EVENT_ACTOR_SWITCH_GUN);
 			e.u.ActorSwitchGun.UID = a->uid;
 			e.u.ActorSwitchGun.GunIdx = actorsGunIdx;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 		}
 
 		// Drop the same gun
@@ -2207,7 +2207,7 @@ void ActorPickupGun(const TActor *a, const WeaponClass *wc)
 				break;
 			}
 		}
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 
 		// If replacing a gun, "drop" the gun being replaced (i.e. create a gun
 		// pickup)
@@ -2312,7 +2312,7 @@ void ActorHit(const NThingDamage d)
 			}
 			GameEvent e = GameEventNew(GAME_EVENT_PARTICLE_REMOVE);
 			e.u.ParticleRemoveId = _ca_index;
-			GameEventsEnqueue(&gGameEvents, e);
+			GameEventsEnqueue(&gGameEvents, &e);
 			break;
 		}
 		CA_FOREACH_END()
@@ -2327,7 +2327,7 @@ void ActorHit(const NThingDamage d)
 		s.u.AddParticle.Z = BULLET_Z * Z_FACTOR;
 		s.u.AddParticle.DZ = 3;
 		sprintf(s.u.AddParticle.Text, "-%d", damage);
-		GameEventsEnqueue(&gGameEvents, s);
+		GameEventsEnqueue(&gGameEvents, &s);
 
 		ActorAddBloodSplatters(a, d.Power, d.Mass, NetToVec2(d.Vel));
 
@@ -2368,12 +2368,12 @@ void ActorHit(const NThingDamage d)
 					svec2_scale(svec2_normalize(NetToVec2(d.Vel)), 0.4f);
 				e.u.AddParticle.Spin = RAND_DOUBLE(-0.5, 0.5);
 				e.u.AddParticle.ActorUID = a->uid;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 
 				GameEvent es = GameEventNew(GAME_EVENT_SOUND_AT);
 				strcpy(es.u.SoundAt.Sound, "headshot");
 				es.u.SoundAt.Pos = Vec2ToNet(a->Pos);
-				GameEventsEnqueue(&gGameEvents, es);
+				GameEventsEnqueue(&gGameEvents, &es);
 
 				a->isHatDetached = true;
 			}
@@ -2568,6 +2568,10 @@ void ActorPersistPlayerWeaponsAndAmmo(const TActor *a)
 	for (int i = 0; i < MAX_WEAPONS; i++)
 	{
 		p->guns[i] = a->guns[i].Gun;
+	}
+	if (a->ammo.elemSize == 0 || a->ammo.data == NULL)
+	{
+		return;
 	}
 	CArrayCopy(&p->ammo, &a->ammo);
 }

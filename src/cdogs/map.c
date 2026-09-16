@@ -356,7 +356,7 @@ void MapPlacePickup(
 	strcpy(e.u.AddPickup.PickupClass, p->Name);
 	e.u.AddPickup.ThingFlags = flags;
 	e.u.AddPickup.Pos = Vec2ToNet(pos);
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 void MapPlaceCollectible(
@@ -390,7 +390,7 @@ void MapPlaceKey(
 		e.u.AddPickup.PickupClass,
 		KeyPickupClass(mb->mission->KeyStyle, keyIndex)->Name);
 	e.u.AddPickup.Pos = Vec2ToNet(Vec2CenterOfTile(tilePos));
-	GameEventsEnqueue(&gGameEvents, e);
+	GameEventsEnqueue(&gGameEvents, &e);
 }
 
 static int GetPlacementRetries(

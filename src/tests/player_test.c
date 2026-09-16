@@ -21,9 +21,9 @@ FEATURE(assign_unused, "Assign unused input device")
 	PlayerDataInit(&gPlayerDatas);
 	gConfig = ConfigDefault();
 	NPlayerData pd = PlayerDataDefault(0);
-	PlayerDataAddOrUpdate(pd);
+	PlayerDataAddOrUpdate(&pd);
 	pd.UID = 1;
-	PlayerDataAddOrUpdate(pd);
+	PlayerDataAddOrUpdate(&pd);
 	SCENARIO("Assign device to unset player")
 		GIVEN("a player with an unset input device")
 			PlayerData *p = CArrayGet(&gPlayerDatas, 0);

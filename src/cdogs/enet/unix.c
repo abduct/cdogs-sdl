@@ -445,6 +445,61 @@ enet_socket_send (ENetSocket socket,
                   const ENetBuffer * buffers,
                   size_t bufferCount)
 {
+#ifdef __VITA__
+    /*
+     * Vita: sendmsg() with large iovec counts fails with errno=122
+     * (EMSGSIZE / "Message too long") even when the total datagram is
+     * well under MTU (e.g. bufferCount=53, bytes≈1375). Coalesce one
+     * logical ENet UDP datagram into a single contiguous buffer and
+     * send with sendto(). Max size is ENET_PROTOCOL_MAXIMUM_MTU (4096),
+     * which is ENet's hard protocol MTU ceiling.
+     */
+    size_t totalLength = 0;
+    size_t i;
+    unsigned char coalesced[ENET_PROTOCOL_MAXIMUM_MTU];
+    struct sockaddr_in sin;
+    struct sockaddr *sa = NULL;
+    socklen_t saLen = 0;
+    int sentLength;
+
+    for (i = 0; i < bufferCount; ++i)
+      totalLength += buffers[i].dataLength;
+
+    if (totalLength > ENET_PROTOCOL_MAXIMUM_MTU)
+    {
+       errno = EMSGSIZE;
+       return -1;
+    }
+
+    totalLength = 0;
+    for (i = 0; i < bufferCount; ++i)
+    {
+       memcpy(coalesced + totalLength, buffers[i].data, buffers[i].dataLength);
+       totalLength += buffers[i].dataLength;
+    }
+
+    if (address != NULL)
+    {
+        memset(&sin, 0, sizeof(struct sockaddr_in));
+        sin.sin_family = AF_INET;
+        sin.sin_port = ENET_HOST_TO_NET_16(address->port);
+        sin.sin_addr.s_addr = address->host;
+        sa = (struct sockaddr *)&sin;
+        saLen = sizeof(struct sockaddr_in);
+    }
+
+    sentLength = sendto(socket, coalesced, totalLength, 0, sa, saLen);
+
+    if (sentLength == -1)
+    {
+       if (errno == EWOULDBLOCK || errno == EAGAIN)
+         return 0;
+
+       return -1;
+    }
+
+    return sentLength;
+#else
     struct msghdr msgHdr;
     struct sockaddr_in sin;
     int sentLength;
@@ -477,6 +532,7 @@ enet_socket_send (ENetSocket socket,
     }
 
     return sentLength;
+#endif
 }
 
 int

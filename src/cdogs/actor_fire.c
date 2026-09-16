@@ -40,7 +40,7 @@ void ActorFireBarrel(Weapon *w, const TActor *a, const int barrel)
 		e.u.GunState.ActorUID = a->uid;
 		e.u.GunState.Barrel = barrel;
 		e.u.GunState.State = GUNSTATE_FIRING;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	if (!WeaponClassCanShoot(w->Gun))
 	{
@@ -80,7 +80,7 @@ void ActorFireUpdate(Weapon *w, const TActor *a, const int ticks)
 					svec2_add(a->Pos, muzzleOffset);
 				e.u.GunReload.Pos = Vec2ToNet(muzzlePosition);
 				e.u.GunReload.Direction = a->direction;
-				GameEventsEnqueue(&gGameEvents, e);
+				GameEventsEnqueue(&gGameEvents, &e);
 			}
 		}
 	}
@@ -119,7 +119,7 @@ void OnGunFire(const NGunFire gf, SoundDevice *sd)
 			CA_FOREACH(const BulletClass *, bc, wc->u.Normal.Bullets)
 			ab.u.AddBullet.UID = MobObjsObjsGetNextUID();
 			strcpy(ab.u.AddBullet.BulletClass, (*bc)->Name);
-			GameEventsEnqueue(&gGameEvents, ab);
+			GameEventsEnqueue(&gGameEvents, &ab);
 			CA_FOREACH_END()
 		}
 	}
@@ -134,7 +134,7 @@ void OnGunFire(const NGunFire gf, SoundDevice *sd)
 		ap.u.AddParticle.Angle = gf.Angle;
 		ap.u.AddParticle.ActorUID = gf.ActorUID;
 		ap.u.AddParticle.IsAttached = true;
-		GameEventsEnqueue(&gGameEvents, ap);
+		GameEventsEnqueue(&gGameEvents, &ap);
 	}
 	// Sound
 	if (gf.Sound && wc->u.Normal.Sound)
@@ -151,7 +151,7 @@ void OnGunFire(const NGunFire gf, SoundDevice *sd)
 		s.u.Shake.Amount = wc->u.Normal.Shake.Amount;
 		s.u.Shake.CameraSubjectOnly = wc->u.Normal.Shake.CameraSubjectOnly;
 		s.u.Shake.ActorUID = gf.ActorUID;
-		GameEventsEnqueue(&gGameEvents, s);
+		GameEventsEnqueue(&gGameEvents, &s);
 	}
 	// Brass shells
 	// If we have a reload lead, defer the creation of shells until then

@@ -98,6 +98,10 @@
 
 #ifdef __VITA__
 #include <psp2/types.h>
+#include <cdogs/vita_net.h>
+#if defined(CDOGS_VITA_GDB)
+#include <uvdb.h>
+#endif
 /*
  * C-Dogs has large stack frames in map/event generation; provide
  * additional main-thread stack space on Vita.
@@ -117,6 +121,15 @@ int main(int argc, char *argv[])
 
 	srand((unsigned int)time(NULL));
 	LogInit();
+#ifdef __VITA__
+	/* Vita has no useful CLI; always capture logs under the game data dir. */
+	{
+		char logPath[CDOGS_PATH_MAX];
+		GetDataFilePath(logPath, "cdogs-sdl.log");
+		LogOpenFile(logPath);
+		LOG(LM_MAIN, LL_INFO, "Logging to %s", logPath);
+	}
+#endif
 
 	PrintTitle();
 
@@ -210,6 +223,39 @@ int main(int argc, char *argv[])
 	LoadingScreenDraw(
 		&gLoadingScreen, "Initializing network client...", 0.18f);
 #ifndef __EMSCRIPTEN__
+#ifdef __VITA__
+	/* Bring up Vita BSD sockets before ENet; failure keeps the game offline. */
+	if (!VitaNetInit())
+	{
+		LOG(LM_MAIN, LL_WARN,
+			"Vita network init failed; continuing without multiplayer");
+	}
+#if defined(CDOGS_VITA_GDB)
+	/*
+	 * VitaDebugger/libuvdb: networking must already be initialized (uvdb.h).
+	 * Do NOT call sceNetInit again — VitaNetInit owns that lifecycle.
+	 * uvdb_enter() waits for GDB on first hit (TCP 1234 by default).
+	 */
+	else
+	{
+		LOG(LM_MAIN, LL_INFO,
+			"CDOGS_VITA_GDB: starting libuvdb (default TCP 1234)...");
+		if (uvdb_start_server() < 0)
+		{
+			LOG(LM_MAIN, LL_ERROR,
+				"CDOGS_VITA_GDB: uvdb_start_server failed");
+		}
+		else
+		{
+			LOG(LM_MAIN, LL_INFO,
+				"CDOGS_VITA_GDB: server started; stopping at uvdb_enter() for GDB");
+			uvdb_enter();
+			LOG(LM_MAIN, LL_INFO,
+				"CDOGS_VITA_GDB: resumed after GDB continue");
+		}
+	}
+#endif
+#endif
 	if (enet_initialize() != 0)
 	{
 		LOG(LM_MAIN, LL_ERROR, "An error occurred while initializing ENet.");
@@ -321,6 +367,10 @@ bail:
 	MapTerminate(&gMap);
 	NetClientTerminate(&gNetClient);
 	atexit(enet_deinitialize);
+#ifdef __VITA__
+	/* Sockets are closed; tear down Vita net after ENet host destroy. */
+	VitaNetTerm();
+#endif
 	EventTerminate(&gEventHandlers);
 	CampaignTerminate(&gCampaign);
 	CollisionSystemTerminate(&gCollisionSystem);

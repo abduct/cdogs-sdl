@@ -428,7 +428,7 @@ void MissionSetMessageIfComplete(struct MissionOptions *options)
 		{
 			GameEvent msg = GameEventNew(GAME_EVENT_MISSION_COMPLETE);
 			msg.u.MissionComplete = NMakeMissionComplete(options);
-			GameEventsEnqueue(&gGameEvents, msg);
+			GameEventsEnqueue(&gGameEvents, &msg);
 		}
 		else if (options->HasBegun && gCampaign.Entry.Mode == GAME_MODE_NORMAL)
 		{
@@ -442,7 +442,7 @@ void MissionSetMessageIfComplete(struct MissionOptions *options)
 					GameEvent e = GameEventNew(GAME_EVENT_MISSION_END);
 					e.u.MissionEnd.Delay = GAME_OVER_DELAY;
 					strcpy(e.u.MissionEnd.Msg, "Mission failed");
-					GameEventsEnqueue(&gGameEvents, e);
+					GameEventsEnqueue(&gGameEvents, &e);
 				}
 			}
 			CA_FOREACH_END()
@@ -491,7 +491,7 @@ void UpdateMissionObjective(
 		GameEvent e = GameEventNew(GAME_EVENT_OBJECTIVE_UPDATE);
 		e.u.ObjectiveUpdate.ObjectiveId = idx;
 		e.u.ObjectiveUpdate.Count = count;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 }
 
@@ -538,7 +538,7 @@ void MissionBegin(struct MissionOptions *m, const NGameBegin gb)
 			e.u.SetMessage.Message, musicErrorMsg,
 			sizeof e.u.SetMessage.Message - 1);
 		e.u.SetMessage.Ticks = 2000;
-		GameEventsEnqueue(&gGameEvents, e);
+		GameEventsEnqueue(&gGameEvents, &e);
 	}
 	m->time = gb.MissionTime;
 	m->pickupTime = 0;
