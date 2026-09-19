@@ -72,6 +72,7 @@
 #include "pic_manager.h"
 #include "pickup.h"
 #include "sounds.h"
+#include "terrain_cache.h"
 #include "utils.h"
 
 Map gMap;
@@ -159,7 +160,43 @@ static Tile *MapGetTileOfItem(Map *map, Thing *t)
 	return MapGetTile(map, pos);
 }
 
-static void AddItemToTile(Thing *t, Tile *tile);
+static int MapObjectiveThingIndex(const Map *map, const Thing *t)
+{
+	CA_FOREACH(const ThingId, tid, map->objectiveThings)
+	if (tid->Id == t->id && tid->Kind == t->kind)
+	{
+		return _ca_index;
+	}
+	CA_FOREACH_END()
+	return -1;
+}
+
+static void MapObjectiveThingAdd(Map *map, const Thing *t)
+{
+	if (!(t->flags & THING_OBJECTIVE))
+	{
+		return;
+	}
+	if (MapObjectiveThingIndex(map, t) >= 0)
+	{
+		return;
+	}
+	ThingId tid;
+	tid.Id = t->id;
+	tid.Kind = t->kind;
+	CArrayPushBack(&map->objectiveThings, &tid);
+}
+
+void MapObjectiveThingRemove(Map *map, const Thing *t)
+{
+	const int idx = MapObjectiveThingIndex(map, t);
+	if (idx >= 0)
+	{
+		CArrayDelete(&map->objectiveThings, idx);
+	}
+}
+
+static void AddItemToTile(Map *map, Thing *t, Tile *tile);
 bool MapTryMoveThing(Map *map, Thing *t, const struct vec2 pos)
 {
 	// Check if we can move to new position
@@ -185,10 +222,10 @@ bool MapTryMoveThing(Map *map, Thing *t, const struct vec2 pos)
 	}
 	// ...move and add to new tile
 	t->Pos = pos;
-	AddItemToTile(t, MapGetTile(map, t2));
+	AddItemToTile(map, t, MapGetTile(map, t2));
 	return true;
 }
-static void AddItemToTile(Thing *t, Tile *tile)
+static void AddItemToTile(Map *map, Thing *t, Tile *tile)
 {
 	ThingId tid;
 	tid.Id = t->id;
@@ -196,6 +233,8 @@ static void AddItemToTile(Thing *t, Tile *tile)
 	CASSERT(tid.Id >= 0, "invalid ThingId");
 	CASSERT(tid.Kind >= 0 && tid.Kind <= KIND_PICKUP, "unknown thing kind");
 	CArrayPushBack(&tile->things, &tid);
+	// Index by ThingId only — tile moves leave the entry in place.
+	MapObjectiveThingAdd(map, t);
 }
 
 void MapRemoveThing(Map *map, Thing *t)
@@ -488,6 +527,7 @@ void MapTerminate(Map *map)
 	CA_FOREACH_END()
 	CArrayTerminate(&map->triggers);
 	CArrayTerminate(&map->exits);
+	CArrayTerminate(&map->objectiveThings);
 	struct vec2i v;
 	for (v.y = 0; v.y < map->Size.y; v.y++)
 	{
@@ -517,6 +557,7 @@ void MapInit(Map *map, const struct vec2i size)
 	CArrayInitFillZero(&map->access, sizeof(uint16_t), size.x * size.y);
 	CArrayInit(&map->triggers, sizeof(Trigger *));
 	CArrayInit(&map->exits, sizeof(Exit));
+	CArrayInit(&map->objectiveThings, sizeof(ThingId));
 	PathCacheInit(&gPathCache, map);
 
 	struct vec2i v;
@@ -529,6 +570,7 @@ void MapInit(Map *map, const struct vec2i size)
 			CArrayPushBack(&map->Tiles, &t);
 		}
 	}
+	TerrainCacheInvalidate();
 }
 
 void MapPrintDebug(const Map *m)

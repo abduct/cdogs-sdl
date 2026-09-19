@@ -91,6 +91,7 @@ set(CDOGS_SOURCES
 	palette.c
 	particle.c
 	particle_class.c
+	particle_atlas.c
 	path_cache.c
 	pic.c
 	pic_manager.c
@@ -103,6 +104,7 @@ set(CDOGS_SOURCES
 	quick_play.c
 	screen_shake.c
 	sounds.c
+	terrain_cache.c
 	texture.c
 	thing.c
 	tile.c
@@ -118,6 +120,9 @@ set(CDOGS_SOURCES
 	yajl_utils.c)
 if(VITA)
 	list(APPEND CDOGS_SOURCES vita_net.c)
+	if(CDOGS_VITA_PROFILE)
+		list(APPEND CDOGS_SOURCES vita_profile.c)
+	endif()
 endif()
 set(CDOGS_HEADERS
 	actor_fire.h
@@ -208,6 +213,7 @@ set(CDOGS_HEADERS
 	palette.h
 	particle.h
 	particle_class.h
+	particle_atlas.h
 	path_cache.h
 	pic.h
 	pic_manager.h
@@ -222,6 +228,7 @@ set(CDOGS_HEADERS
 	sounds.h
 	sys_config.h
 	sys_specifics.h
+	terrain_cache.h
 	texture.h
 	thing.h
 	tile.h
@@ -237,6 +244,7 @@ set(CDOGS_HEADERS
 	yajl_utils.h)
 if(VITA)
 	list(APPEND CDOGS_HEADERS vita_net.h)
+	list(APPEND CDOGS_HEADERS vita_profile.h)
 endif()
 
 if(NOT USE_SHARED_ENET)

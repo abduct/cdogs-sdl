@@ -47,6 +47,7 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 #include "automap.h"
+#include "vita_profile.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -71,6 +72,9 @@ color_t colorWall = {72, 152, 72, 255};
 color_t colorFloor = {12, 92, 12, 255};
 color_t colorRoom = {24, 112, 24, 255};
 color_t colorExit = {255, 255, 255, 255};
+
+/* 1 while inside AutomapDrawRegion (HUD radar); counters only then. */
+static int s_automapHudRadar;
 
 static void DisplayPlayer(
 	SDL_Renderer *renderer, const TActor *player, struct vec2i pos,
@@ -116,6 +120,10 @@ static void DisplayExits(
 	CA_FOREACH(const Exit, e, m->exits)
 	if (e->Hidden)
 		continue;
+	if (s_automapHudRadar)
+	{
+		VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_EXIT_MARKERS, 1);
+	}
 	const struct vec2i exitPos =
 		svec2i_add(svec2i_scale(e->R.Pos, (float)scale), pos);
 	const struct vec2i exitSize = svec2i_scale(e->R.Size, (float)scale);
@@ -178,24 +186,51 @@ void DrawDot(Thing *t, color_t color, struct vec2i pos, int scale)
 	DrawRectangle(&gGraphicsDevice, pos, svec2i(scale, scale), color, false);
 }
 
+/*
+	DrawMap tile → screen pixel (existing transform):
+
+	  mapPos = center + centerOn * (-scale)
+	  for each tile (x, y) and sub-pixel (j, i) in [0, scale):
+	    drawPos = (mapPos.x + x * scale + j, mapPos.y + y * scale + i)
+
+	HUD radar (AutomapDrawRegion) uses scale == 1, so:
+	  drawPos = (center.x - centerOn.x + x, center.y - centerOn.y + y)
+
+	With center = clipPos + clipSize/2 (integer division), a scale-1 point is
+	inside the SDL clip [clipPos, clipPos+clipSize) iff:
+	  centerOn.x - clipSize.x/2  <= x <  centerOn.x + (clipSize.x - clipSize.x/2)
+	  (same for y)
+
+	tileX0/tileY0/tileX1/tileY1 select the half-open map rectangle to visit.
+	Callers that must draw the whole map pass [0, map->Size).
+*/
 static void DrawMap(
 	Map *map, struct vec2i center, struct vec2i centerOn, struct vec2i size,
-	int scale, int flags)
+	int scale, int flags, const int tileX0, const int tileY0, const int tileX1,
+	const int tileY1)
 {
 	int x, y;
 	struct vec2i mapPos =
 		svec2i_add(center, svec2i_scale(centerOn, (float)-scale));
-	for (y = 0; y < gMap.Size.y; y++)
+	for (y = tileY0; y < tileY1; y++)
 	{
 		int i;
 		for (i = 0; i < scale; i++)
 		{
-			for (x = 0; x < gMap.Size.x; x++)
+			for (x = tileX0; x < tileX1; x++)
 			{
+				if (s_automapHudRadar)
+				{
+					VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_TILES_ITERATED, 1);
+				}
 				Tile *tile = MapGetTile(map, svec2i(x, y));
 				if (tile->Class->Pic != NULL &&
 					(tile->isVisited || (flags & AUTOMAP_FLAGS_SHOWALL)))
 				{
+					if (s_automapHudRadar)
+					{
+						VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_TILES_VISITED, 1);
+					}
 					int j;
 					for (j = 0; j < scale; j++)
 					{
@@ -244,15 +279,26 @@ static void DrawMap(
 
 static void DrawThing(
 	Thing *t, Tile *tile, struct vec2i pos, int scale, int flags);
+/* tileX0..tileY1 are half-open bounds, matching DrawMap. Fullscreen passes
+ * [0, map->Size); HUD radar passes the same window as DrawMap. */
 static void DrawObjectivesAndKeys(
-	Map *map, struct vec2i pos, int scale, int flags)
+	Map *map, struct vec2i pos, int scale, int flags, const int tileX0,
+	const int tileY0, const int tileX1, const int tileY1)
 {
-	for (int y = 0; y < map->Size.y; y++)
+	for (int y = tileY0; y < tileY1; y++)
 	{
-		for (int x = 0; x < map->Size.x; x++)
+		for (int x = tileX0; x < tileX1; x++)
 		{
+			if (s_automapHudRadar)
+			{
+				VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_TILES_SCANNED, 1);
+			}
 			Tile *tile = MapGetTile(map, svec2i(x, y));
 			CA_FOREACH(ThingId, tid, tile->things)
+			if (s_automapHudRadar)
+			{
+				VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_THINGS_INSPECTED, 1);
+			}
 			DrawThing(ThingIdGetThing(tid), tile, pos, scale, flags);
 			CA_FOREACH_END()
 		}
@@ -270,6 +316,10 @@ static void DrawThing(
 			if ((o->Flags & OBJECTIVE_POSKNOWN) || tile->isVisited ||
 				(flags & AUTOMAP_FLAGS_SHOWALL))
 			{
+				if (s_automapHudRadar)
+				{
+					VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_MARKERS_DRAWN, 1);
+				}
 				DisplayObjective(t, obj, pos, scale, flags);
 			}
 		}
@@ -281,6 +331,10 @@ static void DrawThing(
 		if (keyFlags != 0)
 		{
 			const color_t dotColor = KeyColor(keyFlags);
+			if (s_automapHudRadar)
+			{
+				VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_MARKERS_DRAWN, 1);
+			}
 			DrawDot(t, dotColor, pos, scale);
 		}
 	}
@@ -313,8 +367,11 @@ void AutomapDraw(
 	DrawRectangle(g, svec2i_zero(), g->cachedConfig.Res,
 		mask, true);
 
-	DrawMap(&gMap, mapCenter, centerOn, gMap.Size, mapScale, flags);
-	DrawObjectivesAndKeys(&gMap, pos, mapScale, flags);
+	DrawMap(
+		&gMap, mapCenter, centerOn, gMap.Size, mapScale, flags, 0, 0,
+		gMap.Size.x, gMap.Size.y);
+	DrawObjectivesAndKeys(
+		&gMap, pos, mapScale, flags, 0, 0, gMap.Size.x, gMap.Size.y);
 
 	CA_FOREACH(const PlayerData, p, gPlayerDatas)
 	if (!IsPlayerAlive(p))
@@ -331,31 +388,77 @@ void AutomapDraw(
 	DisplaySummary();
 }
 
-// Draw mini automap
+// Draw mini automap (HUD radar). scale is always 1.
 void AutomapDrawRegion(
 	SDL_Renderer *renderer, Map *map, struct vec2i pos,
 	const struct vec2i size, const struct vec2i mapCenter, const int flags,
 	const bool showExit)
 {
+	s_automapHudRadar = 1;
+	VitaProfileHudBegin(VITA_HUD_RADAR);
+	VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_CALLS, 1);
+	VitaProfileSetDrawSource(VITA_SRC_RADAR);
 	const int scale = 1;
 	const Rect2i oldClip = GraphicsGetClip(renderer);
 	GraphicsSetClip(renderer, Rect2iNew(pos, size));
 	pos = svec2i_add(pos, svec2i_scale_divide(size, 2));
-	DrawMap(map, pos, mapCenter, size, scale, flags);
+
+	/*
+		Exact scale-1 clip window (see DrawMap comment):
+		  x in [mapCenter.x - size.x/2, mapCenter.x + (size.x - size.x/2))
+		One-tile margin on each side covers any off-by-one from integer
+		center = clipPos + size/2; SDL clip remains the correctness backstop.
+	*/
+	int tileX0 = mapCenter.x - size.x / 2 - 1;
+	int tileY0 = mapCenter.y - size.y / 2 - 1;
+	int tileX1 = mapCenter.x + (size.x - size.x / 2) + 1;
+	int tileY1 = mapCenter.y + (size.y - size.y / 2) + 1;
+	if (tileX0 < 0)
+	{
+		tileX0 = 0;
+	}
+	if (tileY0 < 0)
+	{
+		tileY0 = 0;
+	}
+	if (tileX1 > map->Size.x)
+	{
+		tileX1 = map->Size.x;
+	}
+	if (tileY1 > map->Size.y)
+	{
+		tileY1 = map->Size.y;
+	}
+
+	VitaProfileHudBegin(VITA_HUD_RADAR_DRAWMAP);
+	DrawMap(map, pos, mapCenter, size, scale, flags, tileX0, tileY0, tileX1,
+		tileY1);
+	VitaProfileHudEnd(VITA_HUD_RADAR_DRAWMAP);
 	const struct vec2i centerOn =
 		svec2i_add(pos, svec2i_scale(mapCenter, (float)-scale));
+	VitaProfileHudBegin(VITA_HUD_RADAR_PLAYERS);
 	CA_FOREACH(const PlayerData, p, gPlayerDatas)
 	if (!IsPlayerAlive(p))
 	{
 		continue;
 	}
 	const TActor *player = ActorGetByUID(p->ActorUID);
+	VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_PLAYER_MARKERS, 1);
 	DisplayPlayer(renderer, player, centerOn, scale);
 	CA_FOREACH_END()
-	DrawObjectivesAndKeys(&gMap, centerOn, scale, flags);
+	VitaProfileHudEnd(VITA_HUD_RADAR_PLAYERS);
+	VitaProfileHudBegin(VITA_HUD_RADAR_OBJECTIVES);
+	DrawObjectivesAndKeys(
+		&gMap, centerOn, scale, flags, tileX0, tileY0, tileX1, tileY1);
+	VitaProfileHudEnd(VITA_HUD_RADAR_OBJECTIVES);
 	if (showExit)
 	{
+		VitaProfileHudBegin(VITA_HUD_RADAR_EXITS);
 		DisplayExits(map, centerOn, scale, flags);
+		VitaProfileHudEnd(VITA_HUD_RADAR_EXITS);
 	}
 	GraphicsSetClip(renderer, oldClip);
+	VitaProfileSetDrawSource(VITA_SRC_HUD);
+	VitaProfileHudEnd(VITA_HUD_RADAR);
+	s_automapHudRadar = 0;
 }

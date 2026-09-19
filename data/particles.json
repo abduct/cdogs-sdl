@@ -50,8 +50,8 @@
         "Type": "Normal",
         "Pic": "particles/bullet_hole"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000
+      "RangeLow": 2800,
+      "RangeHigh": 2800
     },
     {
       "Name": "boom",
@@ -157,8 +157,8 @@
         "Type": "Directional",
         "Sprites": "particles/brass"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 2100,
+      "RangeHigh": 2100,
       "GravityFactor": 1,
       "HitsWalls": true,
       "ZDarken": true
@@ -169,8 +169,8 @@
         "Type": "Directional",
         "Sprites": "particles/brass_big"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 2100,
+      "RangeHigh": 2100,
       "GravityFactor": 1,
       "HitsWalls": true,
       "ZDarken": true
@@ -181,8 +181,8 @@
         "Type": "Directional",
         "Sprites": "particles/shotshell"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 2100,
+      "RangeHigh": 2100,
       "GravityFactor": 1,
       "HitsWalls": true,
       "ZDarken": true
@@ -256,8 +256,8 @@
         "Type": "Animated",
         "Sprites": "particles/blood1"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 700,
+      "RangeHigh": 700,
       "GravityFactor": 1,
       "HitsWalls": true,
       "Bounces": false,
@@ -269,8 +269,8 @@
         "Type": "Animated",
         "Sprites": "particles/blood2"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 700,
+      "RangeHigh": 700,
       "GravityFactor": 1,
       "HitsWalls": true,
       "Bounces": false,
@@ -283,8 +283,8 @@
         "Type": "Animated",
         "Sprites": "particles/blood3"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 700,
+      "RangeHigh": 700,
       "GravityFactor": 1,
       "HitsWalls": true,
       "Bounces": false,
@@ -297,8 +297,8 @@
         "Type": "Normal",
         "Pic": "particles/spall1"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 1400,
+      "RangeHigh": 1400,
       "GravityFactor": 1,
       "HitsWalls": true,
       "BounceFriction": 0.4,
@@ -310,8 +310,8 @@
         "Type": "Animated",
         "Sprites": "particles/spall2"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 1400,
+      "RangeHigh": 1400,
       "GravityFactor": 1,
       "HitsWalls": true,
       "BounceFriction": 0.4,
@@ -323,8 +323,8 @@
         "Type": "Animated",
         "Sprites": "particles/spall3"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 1400,
+      "RangeHigh": 1400,
       "GravityFactor": 1,
       "HitsWalls": true,
       "BounceFriction": 0.4,
@@ -412,8 +412,8 @@
         "Type": "Normal",
         "Pic": "particles/footprint"
       },
-      "RangeLow": 10000,
-      "RangeHigh": 11000,
+      "RangeLow": 1400,
+      "RangeHigh": 1400,
       "DrawBelow": true
     },
     {

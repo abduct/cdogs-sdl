@@ -34,6 +34,7 @@
 #include "log.h"
 #include "los.h"
 #include "player.h"
+#include "vita_profile.h"
 
 #define PAN_SPEED 4
 
@@ -416,11 +417,13 @@ static void DoBuffer(
 	DrawBuffer *b, const struct vec2 center, const int w,
 	const struct vec2 noise, const struct vec2i offset)
 {
+	VitaProfileDrawBegin(VITA_DRAW_BUFFER_BUILD);
 	DrawBufferSetFromMap(b, &gMap, svec2_add(center, noise), w);
 	if (gPlayerDatas.size > 0)
 	{
 		DrawBufferFix(b);
 	}
+	VitaProfileDrawEnd(VITA_DRAW_BUFFER_BUILD);
 	DrawBufferArgs args;
 	memset(&args, 0, sizeof args);
 	args.HUD = ConfigGetBool(&gConfig, "Graphics.ShowHUD");

@@ -37,6 +37,14 @@ option(BUILD_EDITOR "Build cdogs-sdl-editor" ON)
 # Opt-in VitaDebugger/libuvdb GDB server. Default OFF so ordinary Vita and
 # desktop builds are unchanged. Only meaningful when the Vita toolchain is used.
 option(CDOGS_VITA_GDB "Enable VitaDebugger/libuvdb GDB server (Vita only)" OFF)
+# Opt-in Vita on-screen performance profiler. Default OFF. Independent of GDB.
+option(CDOGS_VITA_PROFILE "Enable Vita performance profiler overlay (Vita only)" OFF)
+# When CDOGS_VITA_PROFILE is ON: keep Profile-9 forensic probes (default ON).
+# Set OFF for lightweight validation builds (top-level timers only).
+option(CDOGS_VITA_PROFILE_DETAILED "Enable detailed Vita Profile-9 forensic probes" ON)
+# Independently toggleable renderer optimizations (default OFF).
+option(CDOGS_PARTICLE_ATLAS "Runtime particle texture atlas" OFF)
+option(CDOGS_TERRAIN_CACHE "Viewport fog-aware static terrain cache" OFF)
 
 # check for crosscompiling (defined when using a toolchain file)
 if(CMAKE_CROSSCOMPILING)
@@ -199,6 +207,19 @@ if(CDOGS_VITA_GDB)
 			SceNetPs_stub
 			SceKernelModulemgr_stub
 			pthread)
+	endif()
+endif()
+
+if(CDOGS_VITA_PROFILE)
+	if(NOT VITA)
+		message(WARNING "CDOGS_VITA_PROFILE is only meaningful for Vita builds; ignoring")
+	else()
+		message(STATUS "CDOGS_VITA_PROFILE: on-screen performance overlay enabled")
+		if(CDOGS_VITA_PROFILE_DETAILED)
+			message(STATUS "CDOGS_VITA_PROFILE_DETAILED: Profile-9 forensic probes ON")
+		else()
+			message(STATUS "CDOGS_VITA_PROFILE_DETAILED: OFF (lightweight validation metrics)")
+		endif()
 	endif()
 endif()
 

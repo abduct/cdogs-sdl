@@ -28,6 +28,8 @@
 #include "grafx_bg.h"
 
 #include "actors.h"
+#include "texture.h"
+#include "vita_profile.h"
 #include "ai.h"
 #include "draw/draw.h"
 #include "draw/drawtools.h"
@@ -79,12 +81,16 @@ static void DrawBackgroundWithRenderer(
 				"renderer does not support render to texture");
 		}
 	}
+	TextureFlushEx(TEX_FLUSH_RENDER_TARGET);
+	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
 	if (SDL_SetRenderTarget(wc->renderer, target) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "cannot set render target: %s", SDL_GetError());
 	}
 	wc->bkgMask = ColorTint(colorWhite, tint);
 	DrawBackground(g, src, buffer, &gMap, pos, args);
+	TextureFlushEx(TEX_FLUSH_RENDER_TARGET);
+	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
 	if (SDL_SetRenderTarget(wc->renderer, NULL) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "cannot set render target: %s", SDL_GetError());

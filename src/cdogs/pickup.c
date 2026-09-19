@@ -112,6 +112,7 @@ void PickupDestroy(const int uid)
 {
 	Pickup *p = PickupGetByUID(uid);
 	CASSERT(p->isInUse, "Destroying not-in-use pickup");
+	MapObjectiveThingRemove(&gMap, &p->thing);
 	MapRemoveThing(&gMap, &p->thing);
 	p->isInUse = false;
 }

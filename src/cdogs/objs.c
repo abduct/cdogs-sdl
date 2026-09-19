@@ -534,6 +534,7 @@ void ObjAdd(const NMapObjectAdd amo)
 void ObjDestroy(TObject *o)
 {
 	CASSERT(o->isInUse, "Destroying in-use object");
+	MapObjectiveThingRemove(&gMap, &o->thing);
 	MapRemoveThing(&gMap, &o->thing);
 	o->isInUse = false;
 }

@@ -35,6 +35,7 @@
 #include "net_client.h"
 #include "net_server.h"
 #include "sounds.h"
+#include <cdogs/vita_profile.h>
 
 #ifdef __EMSCRIPTEN__
 #include <autosave.h>
@@ -195,10 +196,15 @@ bool LoopRunnerRunInner(LoopRunInnerData *ctx)
 	if (LoopRunParamsShouldSleep(&(ctx->p)))
 	{
 		SDL_Delay(1);
+		/* Sleep polls must not touch profiler sample/CSV state. */
 		return true;
 	}
 #endif
 
+	/* Active work only — excludes intentional SDL_Delay pacing above. */
+	VitaProfileBegin(VITA_PROF_FRAME);
+
+	VitaProfileBegin(VITA_PROF_PREUPDATE);
 	// Input
 	EventPoll(&gEventHandlers, ctx->p.TicksElapsed, NULL);
 	if (ctx->data->InputFunc)
@@ -208,12 +214,18 @@ bool LoopRunnerRunInner(LoopRunInnerData *ctx)
 
 	NetClientPoll(&gNetClient);
 	NetServerPoll(&gNetServer);
+	VitaProfileEnd(VITA_PROF_PREUPDATE);
 
-	// Update
+	// Update — complete UpdateFunc (e.g. entire RunGameUpdate)
+	VitaProfileBegin(VITA_PROF_UPDATEFUNC);
 	ctx->p.Result = ctx->data->UpdateFunc(ctx->data, ctx->l);
+	VitaProfileEnd(VITA_PROF_UPDATEFUNC);
+	VitaProfileNoteUpdate();
 	GameLoopData *newData = GetCurrentLoop(ctx->l);
 	if (newData == NULL)
 	{
+		VitaProfileEnd(VITA_PROF_FRAME);
+		VitaProfileNoteWork();
 		return false;
 	}
 	else if (newData != ctx->data)
@@ -234,11 +246,15 @@ bool LoopRunnerRunInner(LoopRunInnerData *ctx)
 		ctx->data = newData;
 		GameLoopOnEnter(ctx->data);
 		ctx->p = LoopRunParamsNew(ctx->data);
+		VitaProfileEnd(VITA_PROF_FRAME);
+		VitaProfileNoteWork();
 		return true;
 	}
 
+	VitaProfileUpdateBegin(VITA_UPD_NET_FLUSH);
 	NetServerFlush(&gNetServer);
 	NetClientFlush(&gNetClient);
+	VitaProfileUpdateEnd(VITA_UPD_NET_FLUSH);
 
 	bool draw = !ctx->data->HasDrawnFirst;
 	switch (ctx->p.Result)
@@ -258,6 +274,9 @@ bool LoopRunnerRunInner(LoopRunInnerData *ctx)
 	// frame skip
 	if (LoopRunParamsShouldSkip(&(ctx->p)))
 	{
+		VitaProfileNoteSkip();
+		VitaProfileEnd(VITA_PROF_FRAME);
+		VitaProfileNoteSkipWork();
 		return true;
 	}
 #endif
@@ -265,6 +284,7 @@ bool LoopRunnerRunInner(LoopRunInnerData *ctx)
 	// Draw
 	if (draw)
 	{
+		VitaProfileBegin(VITA_PROF_PRERENDER);
 		WindowContextPreRender(&gGraphicsDevice.gameWindow);
 		if (gGraphicsDevice.cachedConfig.SecondWindow)
 		{
@@ -279,18 +299,29 @@ bool LoopRunnerRunInner(LoopRunInnerData *ctx)
 				parent->DrawFunc(parent);
 			}
 		}
+		VitaProfileEnd(VITA_PROF_PRERENDER);
 		if (ctx->data->DrawFunc)
 		{
+			VitaProfileBegin(VITA_PROF_DRAW);
 			ctx->data->DrawFunc(ctx->data);
+			VitaProfileEnd(VITA_PROF_DRAW);
 		}
+		/* PRESENT = complete WindowContextPostRender (incl. SDL_RenderPresent). */
+		VitaProfileBegin(VITA_PROF_PRESENT);
 		WindowContextPostRender(&gGraphicsDevice.gameWindow);
 		if (gGraphicsDevice.cachedConfig.SecondWindow)
 		{
 			WindowContextPostRender(&gGraphicsDevice.secondWindow);
 		}
+		VitaProfileEnd(VITA_PROF_PRESENT);
 		ctx->data->HasDrawnFirst = true;
+		VitaProfileEnd(VITA_PROF_FRAME);
+		VitaProfileNotePresentWork();
+		return true;
 	}
 
+	VitaProfileEnd(VITA_PROF_FRAME);
+	VitaProfileNoteWork();
 	return true;
 }
 
@@ -345,7 +376,10 @@ static bool LoopRunParamsShouldSleep(LoopRunParams *p)
 {
 	const Uint32 ticksThen = p->TicksNow;
 	p->TicksNow = SDL_GetTicks();
-	p->TicksElapsed += p->TicksNow - ticksThen;
+	const Uint32 dt = p->TicksNow - ticksThen;
+	p->TicksElapsed += dt;
+	/* Observe only — same delta fed into TicksElapsed; no pacing change. */
+	VitaProfileObserveSchedulerDt(dt);
 	return (int)p->TicksElapsed < p->FrameDurationMs;
 }
 static bool LoopRunParamsShouldSkip(LoopRunParams *p)

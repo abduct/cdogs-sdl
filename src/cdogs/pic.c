@@ -34,6 +34,7 @@
 #include "log.h"
 #include "texture.h"
 #include "utils.h"
+#include "vita_profile.h"
 
 map_t textureDebugger = NULL;
 
@@ -71,6 +72,8 @@ void PicLoad(
 {
 	memset(p, 0, sizeof *p);
 	p->size = size;
+	p->ownsTex = true;
+	p->texSrc = Rect2iZero();
 	// Pretend to be half the size for HD pics
 	p->isHD = isHD;
 	if (isHD)
@@ -123,7 +126,8 @@ bool PicTryMakeTex(Pic *p)
 	{
 		textureDebugger = hashmap_new();
 	}
-	if (p->Tex != NULL)
+	/* Shared atlas textures must not be destroyed by this Pic. */
+	if (p->Tex != NULL && p->ownsTex)
 	{
 		LOG(LM_GFX, LL_TRACE, "destroying texture %p data(%p)", p->Tex, p->Data);
 		SDL_DestroyTexture(p->Tex);
@@ -149,6 +153,9 @@ bool PicTryMakeTex(Pic *p)
 			}
 		}
 	}
+	p->Tex = NULL;
+	p->ownsTex = true;
+	p->texSrc = Rect2iZero();
 	const struct vec2i size = PicPixelSize(p);
 	p->Tex = TextureCreate(
 		gGraphicsDevice.gameWindow.renderer, SDL_TEXTUREACCESS_STATIC,
@@ -197,13 +204,15 @@ Pic PicCopy(const Pic *src)
 	CMALLOC(p.Data, size);
 	memcpy(p.Data, src->Data, size);
 	p.Tex = NULL;
+	p.ownsTex = true;
+	p.texSrc = Rect2iZero();
 	p.isHD = src->isHD;
 	return p;
 }
 
 void PicFree(Pic *pic)
 {
-	if (pic->Tex != NULL)
+	if (pic->Tex != NULL && pic->ownsTex)
 	{
 		LOG(LM_GFX, LL_TRACE, "freeing texture %p data(%p)", pic->Tex, pic->Data);
 		SDL_DestroyTexture(pic->Tex);
@@ -229,6 +238,9 @@ void PicFree(Pic *pic)
 			}
 		}
 	}
+	pic->Tex = NULL;
+	pic->ownsTex = true;
+	pic->texSrc = Rect2iZero();
 	pic->size = svec2i_zero();
 	CFREE(pic->Data);
 	pic->Data = NULL;
@@ -328,12 +340,44 @@ void PicRender(
 	const double radians, const struct vec2 scale, const SDL_RendererFlip flip,
 	const Rect2i srcRect)
 {
-	Rect2i src = Rect2iNew(
-		svec2i_max(srcRect.Pos, svec2i_zero()), svec2i_zero()
-	);
+	VitaProfileDrawBegin(VITA_DRAW_PICRENDER);
+	VitaProfileDrawCount(VITA_DRAW_CNT_PICRENDER, 1);
+	if (p == NULL || p->Tex == NULL)
+	{
+		VitaProfileDrawEnd(VITA_DRAW_PICRENDER);
+		return;
+	}
+#ifdef CDOGS_PARTICLE_ATLAS
+	if (!p->ownsTex)
+	{
+		VitaProfileDrawCount(VITA_DRAW_CNT_PARTICLE_ATLAS_HIT, 1);
+	}
+#endif
+	Rect2i src;
 	const struct vec2i srcSize = PicPixelSize(p);
-	src.Size = svec2i_is_zero(srcRect.Size) ? srcSize :
-		svec2i_min(svec2i_subtract(srcRect.Size, src.Pos), srcSize);
+	if (Rect2iIsZero(srcRect))
+	{
+		if (!p->ownsTex && !Rect2iIsZero(p->texSrc))
+		{
+			src = p->texSrc;
+		}
+		else
+		{
+			src = Rect2iNew(svec2i_zero(), srcSize);
+		}
+	}
+	else
+	{
+		src.Pos = svec2i_max(srcRect.Pos, svec2i_zero());
+		src.Size = svec2i_is_zero(srcRect.Size)
+					   ? srcSize
+					   : svec2i_min(
+							 svec2i_subtract(srcRect.Size, src.Pos), srcSize);
+		if (!p->ownsTex && !Rect2iIsZero(p->texSrc))
+		{
+			src.Pos = svec2i_add(p->texSrc.Pos, src.Pos);
+		}
+	}
 	Rect2i dest = Rect2iNew(pos, src.Size);
 	// Apply scale to render dest
 	const bool unscaled = svec2_is_equal(scale, svec2_one());
@@ -351,5 +395,13 @@ void PicRender(
 		dest.Size.y = (mint_t)MROUND(src.Size.y * destScale.y);
 	}
 	const double angle = ToDegrees(radians);
+	/* Measure-only: exact axis-aligned dest AABB opportunity. Rotated
+	 * sprites are ineligible (angle!=0) — never counted as would-cull. */
+	if (angle == 0.0)
+	{
+		VitaProfileNoteSpriteDestBounds(
+			dest.Pos.x, dest.Pos.y, dest.Size.x, dest.Size.y);
+	}
 	TextureRender(p->Tex, r, src, dest, mask, angle, flip);
+	VitaProfileDrawEnd(VITA_DRAW_PICRENDER);
 }

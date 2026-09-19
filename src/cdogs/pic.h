@@ -36,6 +36,10 @@ typedef struct
 	bool isHD;
 	Uint32 *Data;
 	SDL_Texture *Tex;
+	/* When false, Tex is a shared atlas (or other) texture; do not destroy it.
+	 * texSrc is the pixel rectangle within Tex used for default (full) draws. */
+	bool ownsTex;
+	Rect2i texSrc;
 } Pic;
 
 color_t PixelToColor(

@@ -65,6 +65,8 @@
 #include "grafx_bg.h"
 #include "log.h"
 #include "palette.h"
+#include "texture.h"
+#include "vita_profile.h"
 #include "utils.h"
 
 GraphicsDevice gGraphicsDevice;
@@ -194,14 +196,14 @@ void GraphicsInitialize(GraphicsDevice *g)
 		CCALLOC(g->buf, GraphicsGetMemSize(&g->cachedConfig));
 		g->bkgTgt = WindowContextCreateTexture(
 			&g->gameWindow, SDL_TEXTUREACCESS_TARGET, svec2i(w, h),
-			SDL_BLENDMODE_NONE, 255, true);
+			SDL_BLENDMODE_NONE, 255, true, false);
 		if (g->bkgTgt == NULL)
 		{
 			return;
 		}
 		g->bkg = WindowContextCreateTexture(
 			&g->gameWindow, SDL_TEXTUREACCESS_STATIC, svec2i(w, h),
-			SDL_BLENDMODE_BLEND, 255, true);
+			SDL_BLENDMODE_BLEND, 255, true, false);
 		if (g->bkg == NULL)
 		{
 			return;
@@ -210,14 +212,14 @@ void GraphicsInitialize(GraphicsDevice *g)
 		{
 			g->bkgTgt2 = WindowContextCreateTexture(
 				&g->secondWindow, SDL_TEXTUREACCESS_TARGET, svec2i(w, h),
-				SDL_BLENDMODE_NONE, 255, true);
+				SDL_BLENDMODE_NONE, 255, true, false);
 			if (g->bkgTgt2 == NULL)
 			{
 				return;
 			}
 			g->bkg2 = WindowContextCreateTexture(
 				&g->secondWindow, SDL_TEXTUREACCESS_STATIC, svec2i(w, h),
-				SDL_BLENDMODE_BLEND, 255, true);
+				SDL_BLENDMODE_BLEND, 255, true, false);
 			if (g->bkg2 == NULL)
 			{
 				return;
@@ -226,15 +228,18 @@ void GraphicsInitialize(GraphicsDevice *g)
 
 		g->screen = WindowContextCreateTexture(
 			&g->gameWindow, SDL_TEXTUREACCESS_STREAMING, svec2i(w, h),
-			SDL_BLENDMODE_BLEND, 255, false);
+			SDL_BLENDMODE_BLEND, 255, false, true);
 		if (g->screen == NULL)
 		{
 			return;
 		}
+		// Keep screen transparent if ever composited (menus/editor soft-blit).
+		BlitClearBuf(g);
+		BlitUpdateFromBuf(g, g->screen);
 
 		g->hud = WindowContextCreateTexture(
 			&g->gameWindow, SDL_TEXTUREACCESS_STREAMING, svec2i(w, h),
-			SDL_BLENDMODE_BLEND, 255, false);
+			SDL_BLENDMODE_BLEND, 255, false, true);
 		if (g->hud == NULL)
 		{
 			return;
@@ -246,7 +251,7 @@ void GraphicsInitialize(GraphicsDevice *g)
 		{
 			g->hud2 = WindowContextCreateTexture(
 				&g->secondWindow, SDL_TEXTUREACCESS_STREAMING, svec2i(w, h),
-				SDL_BLENDMODE_BLEND, 255, false);
+				SDL_BLENDMODE_BLEND, 255, false, true);
 			if (g->hud2 == NULL)
 			{
 				return;
@@ -269,7 +274,7 @@ void GraphicsInitialize(GraphicsDevice *g)
 			(Uint8)(brightness > 0 ? brightness : -brightness) * 13;
 		g->brightnessOverlay = WindowContextCreateTexture(
 			&g->gameWindow, SDL_TEXTUREACCESS_STATIC, svec2i(w, h),
-			SDL_BLENDMODE_BLEND, alpha, false);
+			SDL_BLENDMODE_BLEND, alpha, false, false);
 		if (g->brightnessOverlay == NULL)
 		{
 			return;
@@ -378,6 +383,8 @@ void GraphicsConfigSetFromConfig(GraphicsConfig *gc, Config *c)
 
 void GraphicsSetClip(SDL_Renderer *renderer, const Rect2i r)
 {
+	TextureFlushEx(TEX_FLUSH_CLIP);
+	VitaProfileDrawCount(VITA_DRAW_CNT_CLIP_CHANGE, 1);
 	const SDL_Rect rect = {r.Pos.x, r.Pos.y, r.Size.x, r.Size.y};
 	if (SDL_RenderSetClipRect(renderer, Rect2iIsZero(r) ? NULL : &rect) != 0)
 	{
@@ -394,6 +401,8 @@ Rect2i GraphicsGetClip(SDL_Renderer *renderer)
 
 void GraphicsResetClip(SDL_Renderer *renderer)
 {
+	TextureFlushEx(TEX_FLUSH_CLIP);
+	VitaProfileDrawCount(VITA_DRAW_CNT_CLIP_CHANGE, 1);
 	if (SDL_RenderSetClipRect(renderer, NULL) != 0)
 	{
 		LOG(LM_MAIN, LL_ERROR, "Could not reset clip rect: %s",

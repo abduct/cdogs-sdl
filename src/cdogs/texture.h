@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2017-2019 Cong Xu
+ Copyright (c) 2017-2019, 2026 Cong Xu
  All rights reserved.
  
  Redistribution and use in source and binary forms, with or without
@@ -27,6 +27,7 @@
 
 #include <SDL.h>
 
+#include "color.h"
 #include "vector.h"
 
 
@@ -37,3 +38,31 @@ SDL_Texture *TextureCreate(
 void TextureRender(
 	SDL_Texture *t, SDL_Renderer *r, const Rect2i src, const Rect2i dest,
 	const color_t mask, const double angle, const SDL_RendererFlip flip);
+
+/* Flush reasons for profiler attribution (observational). Batching behavior
+ * is identical regardless of reason. Empty flushes do not submit geometry. */
+typedef enum
+{
+	TEX_FLUSH_TEXTURE_CHANGE = 0,
+	TEX_FLUSH_BLEND_CHANGE,
+	TEX_FLUSH_RENDERER_CHANGE,
+	TEX_FLUSH_CAPACITY,
+	TEX_FLUSH_CLIP,
+	TEX_FLUSH_RENDER_TARGET,
+	TEX_FLUSH_PRE_RENDER,
+	TEX_FLUSH_POST_PRESENT,
+	TEX_FLUSH_DRAW_POINT,
+	TEX_FLUSH_DRAW_RECT,
+	TEX_FLUSH_DRAW_CROSS,
+	TEX_FLUSH_TERRAIN_LOS,
+	TEX_FLUSH_TEXTURE_UPLOAD,
+	TEX_FLUSH_EXPLICIT_OTHER,
+	TEX_FLUSH_UNCLASSIFIED,
+	TEX_FLUSH_NUM
+} TextureFlushReason;
+
+/* Flush pending order-preserving sprite geometry batch. Call before any
+ * non-TextureRender draw that must stay ordered relative to sprites, and
+ * before render-target / Present / clip changes. */
+void TextureFlush(void);
+void TextureFlushEx(TextureFlushReason reason);

@@ -99,6 +99,24 @@ if(VITA AND CDOGS_VITA_GDB)
 		-O0 -g -fno-omit-frame-pointer -fno-inline-functions)
 endif()
 
+# On-screen profiler: define on both exe and lib so instrumentation compiles in.
+if(VITA AND CDOGS_VITA_PROFILE)
+	target_compile_definitions(cdogs-sdl PRIVATE CDOGS_VITA_PROFILE=1)
+	target_compile_definitions(cdogs PRIVATE CDOGS_VITA_PROFILE=1)
+	if(CDOGS_VITA_PROFILE_DETAILED)
+		target_compile_definitions(cdogs-sdl PRIVATE CDOGS_VITA_PROFILE_DETAILED=1)
+		target_compile_definitions(cdogs PRIVATE CDOGS_VITA_PROFILE_DETAILED=1)
+	endif()
+endif()
+if(CDOGS_PARTICLE_ATLAS)
+	target_compile_definitions(cdogs-sdl PRIVATE CDOGS_PARTICLE_ATLAS=1)
+	target_compile_definitions(cdogs PRIVATE CDOGS_PARTICLE_ATLAS=1)
+endif()
+if(CDOGS_TERRAIN_CACHE)
+	target_compile_definitions(cdogs-sdl PRIVATE CDOGS_TERRAIN_CACHE=1)
+	target_compile_definitions(cdogs PRIVATE CDOGS_TERRAIN_CACHE=1)
+endif()
+
 if(GCW0)
 	add_custom_command(TARGET cdogs-sdl
 		POST_BUILD

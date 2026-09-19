@@ -76,11 +76,13 @@
 #include <cdogs/objs.h>
 #include <cdogs/palette.h>
 #include <cdogs/particle.h>
+#include <cdogs/particle_atlas.h>
 #include <cdogs/pic_manager.h>
 #include <cdogs/pickup.h>
 #include <cdogs/pics.h>
 #include <cdogs/player_template.h>
 #include <cdogs/sounds.h>
+#include <cdogs/terrain_cache.h>
 #include <cdogs/triggers.h>
 #include <cdogs/utils.h>
 
@@ -99,6 +101,7 @@
 #ifdef __VITA__
 #include <psp2/types.h>
 #include <cdogs/vita_net.h>
+#include <cdogs/vita_profile.h>
 #if defined(CDOGS_VITA_GDB)
 #include <uvdb.h>
 #endif
@@ -209,6 +212,8 @@ int main(int argc, char *argv[])
 	LoadingScreenInit(&gLoadingScreen, &gGraphicsDevice);
 	LoadingScreenDraw(&gLoadingScreen, "Loading graphics...", 0.0f);
 	PicManagerLoad(&gPicManager);
+	ParticleAtlasBuild(&gPicManager);
+	TerrainCacheInit();
 
 	GetDataFilePath(buf, "");
 	LOG(LM_MAIN, LL_INFO, "data dir(%s)", buf);
@@ -230,6 +235,7 @@ int main(int argc, char *argv[])
 		LOG(LM_MAIN, LL_WARN,
 			"Vita network init failed; continuing without multiplayer");
 	}
+	VitaProfileInit();
 #if defined(CDOGS_VITA_GDB)
 	/*
 	 * VitaDebugger/libuvdb: networking must already be initialized (uvdb.h).
@@ -368,6 +374,8 @@ bail:
 	NetClientTerminate(&gNetClient);
 	atexit(enet_deinitialize);
 #ifdef __VITA__
+	/* Flush profile CSV before tearing down Vita net / exiting. */
+	VitaProfileTerm();
 	/* Sockets are closed; tear down Vita net after ENet host destroy. */
 	VitaNetTerm();
 #endif
@@ -376,6 +384,8 @@ bail:
 	CollisionSystemTerminate(&gCollisionSystem);
 
 	CharSpriteClassesTerminate(&gCharSpriteClasses);
+	ParticleAtlasDestroy();
+	TerrainCacheTerminate();
 	PicManagerTerminate(&gPicManager);
 	FontTerminate(&gFont);
 	GraphicsTerminate(&gGraphicsDevice);

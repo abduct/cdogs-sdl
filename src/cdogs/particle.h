@@ -30,7 +30,11 @@
 #include "character.h"
 #include "particle_class.h"
 
-typedef struct
+#if defined(CDOGS_VITA_PROFILE)
+#include <stdint.h>
+#endif
+
+typedef struct Particle
 {
 	const ParticleClass *Class;
 	union {
@@ -49,6 +53,10 @@ typedef struct
 	Thing thing;
 	bool isAttached;
 	bool isInUse;
+#if defined(CDOGS_VITA_PROFILE)
+	/* Diagnostic-only identity; never reused; not networked. */
+	uint64_t profileDiagId;
+#endif
 } Particle;
 extern CArray gParticles; // of Particle
 

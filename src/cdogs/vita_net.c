@@ -25,7 +25,7 @@
  * page forces data to 0x...f0000 and restores a large gap.
  */
 __attribute__((used, section(".rodata"))) static const char
-	s_vitaSegGapPad[2048];
+	s_vitaSegGapPad[4096];
 
 static bool s_moduleLoaded;
 static bool s_netInited;

@@ -33,6 +33,7 @@
 #include "game_events.h"
 #include "gamedata.h"
 #include "objs.h"
+#include "vita_profile.h"
 
 CArray gParticles;
 #define MAX_PARTICLES 4096
@@ -128,38 +129,56 @@ static bool ParticleUpdate(Particle *p, const int ticks)
 				p->Pos, svec2_subtract(a->thing.Pos, a->thing.LastPos));
 		}
 	}
-	for (int i = 0; i < ticks; i++)
+
+	// Motion / gravity / bounce loop.
+	// Skip only when this tick cannot change Pos/Z/Vel/Spin/DRAW_BELOW:
+	// - zero Vel and DZ, and either no gravity, or already grounded with
+	//   DRAW_BELOW set (so the settle-frame flag transition still runs once).
+	// Do NOT treat Vel==0 alone as "sleep".
+	const bool velZero = svec2_is_zero(p->thing.Vel);
+	const bool dzZero = p->DZ == 0.0f;
+	const bool gravitySettled =
+		p->Class->GravityFactor != 0 && velZero && dzZero &&
+		nearly_equal(p->Z, 0, 0.1f) &&
+		(p->thing.flags & THING_DRAW_BELOW) != 0;
+	const bool motionWork =
+		!velZero || !dzZero ||
+		(p->Class->GravityFactor != 0 && !gravitySettled);
+	if (motionWork)
 	{
-		p->Pos = svec2_add(p->Pos, p->thing.Vel);
-		p->Z += p->DZ;
-		if (p->Class->GravityFactor != 0)
+		for (int i = 0; i < ticks; i++)
 		{
-			if (p->Z <= 0)
+			p->Pos = svec2_add(p->Pos, p->thing.Vel);
+			p->Z += p->DZ;
+			if (p->Class->GravityFactor != 0)
 			{
-				p->Z = 0;
-				if (p->Class->Bounces)
+				if (p->Z <= 0)
 				{
-					p->DZ = -p->DZ / 2;
-					p->thing.Vel = svec2_scale(
-						p->thing.Vel, 1 - p->Class->BounceFriction);
+					p->Z = 0;
+					if (p->Class->Bounces)
+					{
+						p->DZ = -p->DZ / 2;
+						p->thing.Vel = svec2_scale(
+							p->thing.Vel, 1 - p->Class->BounceFriction);
+					}
+					else
+					{
+						p->DZ = 0;
+					}
 				}
 				else
 				{
-					p->DZ = 0;
+					p->DZ -= p->Class->GravityFactor;
 				}
-			}
-			else
-			{
-				p->DZ -= p->Class->GravityFactor;
-			}
-			if (fabsf(p->DZ) < fabs(p->Class->GravityFactor) &&
-				nearly_equal(p->Z, 0, 0.1f))
-			{
-				p->thing.Vel = svec2_zero();
-				p->Spin = 0;
-				// Fell to ground, draw below
-				p->thing.flags |= THING_DRAW_BELOW;
-				break;
+				if (fabsf(p->DZ) < fabs(p->Class->GravityFactor) &&
+					nearly_equal(p->Z, 0, 0.1f))
+				{
+					p->thing.Vel = svec2_zero();
+					p->Spin = 0;
+					// Fell to ground, draw below
+					p->thing.flags |= THING_DRAW_BELOW;
+					break;
+				}
 			}
 		}
 	}
@@ -186,21 +205,32 @@ static bool ParticleUpdate(Particle *p, const int ticks)
 			}
 		}
 	}
-	if (!MapTryMoveThing(&gMap, &p->thing, p->Pos))
+	// Map XY registration: Thing.Pos tracks Particle.Pos via MapTryMoveThing.
+	// When XY is unchanged, tile membership and Thing.Pos are already correct
+	// (Z-only / settled / Spin-only frames). Skip the map call in that case.
+	// Still call when Pos differs — including same-tile sub-tile motion, which
+	// must update Thing.Pos for drawing — and when leaving the map.
+	if (!svec2_is_equal(p->Pos, p->thing.Pos))
 	{
-		// Out of map; destroy
-		return false;
+		if (!MapTryMoveThing(&gMap, &p->thing, p->Pos))
+		{
+			// Out of map; destroy
+			return false;
+		}
 	}
 
-	// Spin
-	p->Angle += p->Spin;
-	if (p->Angle > 2 * MPI)
+	// Spin — no-op when Spin == 0 (common after settle / static cosmetics)
+	if (p->Spin != 0)
 	{
-		p->Angle -= 2 * MPI;
-	}
-	if (p->Angle < 0)
-	{
-		p->Angle += 2 * MPI;
+		p->Angle += p->Spin;
+		if (p->Angle > 2 * MPI)
+		{
+			p->Angle -= 2 * MPI;
+		}
+		if (p->Angle < 0)
+		{
+			p->Angle += 2 * MPI;
+		}
 	}
 
 	return p->Count <= p->Range;
@@ -241,6 +271,7 @@ int ParticleAdd(CArray *particles, const AddParticle add)
 	// Find an empty slot in list
 	Particle *p = NULL;
 	int i;
+	int wasAppend = 0;
 	for (i = 0; i < (int)particles->size; i++)
 	{
 		Particle *pSlot = CArrayGet(particles, i);
@@ -258,6 +289,7 @@ int ParticleAdd(CArray *particles, const AddParticle add)
 		CArrayPushBack(particles, &pNew);
 		i = (int)particles->size - 1;
 		p = CArrayGet(particles, i);
+		wasAppend = 1;
 	}
 	memset(p, 0, sizeof *p);
 	p->Class = add.Class;
@@ -309,6 +341,13 @@ int ParticleAdd(CArray *particles, const AddParticle add)
 		p->thing.flags |= THING_DRAW_ABOVE;
 	}
 	p->isAttached = add.IsAttached;
+#if defined(CDOGS_VITA_PROFILE)
+	p->profileDiagId = VitaProfileParticleNextId();
+	/* wasAppend: 1 if CArrayPushBack grew the array; else hole/reuse candidate. */
+	VitaProfileParticleSpawned(i, p, wasAppend);
+#else
+	UNUSED(wasAppend);
+#endif
 	MapTryMoveThing(&gMap, &p->thing, add.Pos);
 	return i;
 }
@@ -319,6 +358,9 @@ void ParticleDestroy(CArray *particles, const int id)
 	{
 		return;
 	}
+#if defined(CDOGS_VITA_PROFILE)
+	VitaProfileParticleRemoved(id, p);
+#endif
 	MapRemoveThing(&gMap, &p->thing);
 	switch (p->Class->Type)
 	{
@@ -349,6 +391,7 @@ static void DrawParticle(const struct vec2i pos, const ThingDrawFuncData *data)
 			return;
 		}
 	}
+	VitaProfileParticleDrawn(p);
 	switch (p->Class->Type)
 	{
 	case PARTICLE_PIC: {

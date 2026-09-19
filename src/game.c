@@ -69,6 +69,7 @@
 #include <cdogs/net_server.h>
 #include <cdogs/objs.h>
 #include <cdogs/pickup.h>
+#include <cdogs/vita_profile.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -563,6 +564,7 @@ static GameLoopResult RunGameUpdate(GameLoopData *data, LoopRunner *l)
 
 	const int ticksPerFrame = 1;
 
+	VitaProfileUpdateBegin(VITA_UPD_LOS_PLAYER);
 	if (gPlayerDatas.size > 0)
 	{
 		LOSReset(&gMap.LOS);
@@ -595,11 +597,14 @@ static GameLoopResult RunGameUpdate(GameLoopData *data, LoopRunner *l)
 				CommandActor(player, rData->cmds[idx], ticksPerFrame);
 		}
 	}
+	VitaProfileUpdateEnd(VITA_UPD_LOS_PLAYER);
 
 	// Disable sounds on the first frame
 	GameUpdate(rData, ticksPerFrame, data->Frames == 0 ? NULL : &gSoundDevice);
 
+	VitaProfileUpdateBegin(VITA_UPD_CAMERA);
 	CameraUpdate(&rData->Camera, ticksPerFrame, 1000 / data->FPS);
+	VitaProfileUpdateEnd(VITA_UPD_CAMERA);
 
 	return UPDATE_RESULT_DRAW;
 }
@@ -725,36 +730,52 @@ static void RunGameDraw(GameLoopData *data)
 {
 	RunGameData *rData = data->Data;
 
-	// Draw game layer
-	BlitClearBuf(&gGraphicsDevice);
-	CameraDraw(&rData->Camera, rData->Camera.HUD.DrawData);
-	BlitUpdateFromBuf(&gGraphicsDevice, gGraphicsDevice.screen);
+	VitaProfileDrawnReset();
 
-	// Draw HUD layer
-	BlitClearBuf(&gGraphicsDevice);
+	VitaProfileDrawBegin(VITA_DRAW_CLEAR);
+	// Gameplay world/HUD/overlays already draw via PicRender → SDL_RenderCopyEx
+	// onto the renderer's `final` target. The software blit buffer (g->buf) is
+	// never painted with gameplay pixels — only cleared and uploaded as empty
+	// transparent screen/hud textures. Skip that dead clear/upload/composite.
+	gGraphicsDevice.gameWindow.skipSoftBlitComposite = true;
+	if (gGraphicsDevice.cachedConfig.SecondWindow)
+	{
+		gGraphicsDevice.secondWindow.skipSoftBlitComposite = true;
+	}
+	VitaProfileDrawEnd(VITA_DRAW_CLEAR);
+
+	VitaProfileDrawBegin(VITA_DRAW_CAMERA);
+	CameraDraw(&rData->Camera, rData->Camera.HUD.DrawData);
+	VitaProfileDrawEnd(VITA_DRAW_CAMERA);
+
+	VitaProfileDrawBegin(VITA_DRAW_OVERLAY);
 	CameraDrawMode(&rData->Camera);
+	VitaProfileDrawEnd(VITA_DRAW_OVERLAY);
+
+	VitaProfileDrawBegin(VITA_DRAW_HUD);
 	HUDDraw(
 		&rData->Camera.HUD, rData->Camera.NumViews,
 		PauseMenuIsShown(&rData->pm));
+	VitaProfileDrawEnd(VITA_DRAW_HUD);
+
+	VitaProfileDrawBegin(VITA_DRAW_OVERLAY);
 	PauseMenuDraw(&rData->pm);
 	// Draw automap if enabled
 	if (rData->isMap)
 	{
 		AutomapDraw(&gGraphicsDevice, NULL, 0, rData->Camera.HUD.showExit);
 	}
-	BlitUpdateFromBuf(&gGraphicsDevice, gGraphicsDevice.hud);
 
 	if (gGraphicsDevice.cachedConfig.SecondWindow)
 	{
-		BlitClearBuf(&gGraphicsDevice);
 		if (IsAutoMapEnabled(gCampaign.Entry.Mode))
 		{
 			AutomapDraw(
 				&gGraphicsDevice, gGraphicsDevice.secondWindow.renderer, 0,
 				rData->Camera.HUD.showExit);
 		}
-		BlitUpdateFromBuf(&gGraphicsDevice, gGraphicsDevice.hud2);
 	}
+	VitaProfileDrawEnd(VITA_DRAW_OVERLAY);
 }
 
 void GameInit(
@@ -769,7 +790,9 @@ void GameInit(
 void GameUpdate(RunGameData *data, const int ticksPerFrame, SoundDevice *sd)
 {
 	// Update all the things in the game
+	VitaProfileBegin(VITA_PROF_UPDATE);
 
+	VitaProfileUpdateBegin(VITA_UPD_AI);
 	if (!gCampaign.IsClient)
 	{
 		data->aiUpdateCounter -= ticksPerFrame;
@@ -784,21 +807,39 @@ void GameUpdate(RunGameData *data, const int ticksPerFrame, SoundDevice *sd)
 			AICommandLast(ticksPerFrame);
 		}
 	}
+	VitaProfileUpdateEnd(VITA_UPD_AI);
 
+	VitaProfileUpdateBegin(VITA_UPD_ACTORS);
 	UpdateAllActors(ticksPerFrame);
+	VitaProfileUpdateEnd(VITA_UPD_ACTORS);
+	VitaProfileUpdateBegin(VITA_UPD_OBJECTS);
 	UpdateObjects(ticksPerFrame);
+	VitaProfileUpdateEnd(VITA_UPD_OBJECTS);
+	VitaProfileUpdateBegin(VITA_UPD_BULLETS);
 	UpdateMobileObjects(ticksPerFrame);
+	VitaProfileUpdateEnd(VITA_UPD_BULLETS);
+	VitaProfileUpdateBegin(VITA_UPD_PICKUPS);
 	PickupsUpdate(&gPickups, ticksPerFrame);
+	VitaProfileUpdateEnd(VITA_UPD_PICKUPS);
+	VitaProfileBegin(VITA_PROF_PARTICLES);
 	ParticlesUpdate(&gParticles, ticksPerFrame);
+	VitaProfileEnd(VITA_PROF_PARTICLES);
+	VitaProfileUpdateBegin(VITA_UPD_MAP);
 	MapUpdate(data->map);
+	VitaProfileUpdateEnd(VITA_UPD_MAP);
 
+	VitaProfileUpdateBegin(VITA_UPD_WATCHES);
 	UpdateWatches(&data->map->triggers, ticksPerFrame);
+	VitaProfileUpdateEnd(VITA_UPD_WATCHES);
 
+	VitaProfileUpdateBegin(VITA_UPD_POWERUPS);
 	PowerupSpawnerUpdate(&data->healthSpawner, ticksPerFrame);
 	CA_FOREACH(PowerupSpawner, a, data->ammoSpawners)
 	PowerupSpawnerUpdate(a, ticksPerFrame);
 	CA_FOREACH_END()
+	VitaProfileUpdateEnd(VITA_UPD_POWERUPS);
 
+	VitaProfileUpdateBegin(VITA_UPD_MISSION);
 	if (!gCampaign.IsClient)
 	{
 		CheckMissionCompletion(data->m);
@@ -809,10 +850,13 @@ void GameUpdate(RunGameData *data, const int ticksPerFrame, SoundDevice *sd)
 		const NMissionEnd me = NMissionEnd_init_zero;
 		MissionDone(&gMission, me);
 	}
+	VitaProfileUpdateEnd(VITA_UPD_MISSION);
 
+	VitaProfileUpdateBegin(VITA_UPD_EVENTS);
 	HandleGameEvents(
 		&gGameEvents, &data->Camera, &data->healthSpawner, &data->ammoSpawners,
 		sd);
+	VitaProfileUpdateEnd(VITA_UPD_EVENTS);
 
 	data->m->time += ticksPerFrame;
 
@@ -820,4 +864,6 @@ void GameUpdate(RunGameData *data, const int ticksPerFrame, SoundDevice *sd)
 	{
 		RunGameReset(data);
 	}
+
+	VitaProfileEnd(VITA_PROF_UPDATE);
 }

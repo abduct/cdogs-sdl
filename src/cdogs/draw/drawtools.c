@@ -58,10 +58,13 @@
 #include "palette.h"
 #include "pic_manager.h"
 #include "texture.h"
+#include "vita_profile.h"
 #include "utils.h"
 
 void DrawPoint(const struct vec2i pos, const color_t c)
 {
+	TextureFlushEx(TEX_FLUSH_DRAW_POINT);
+	VitaProfileDrawCount(VITA_DRAW_CNT_SDL_DRAWPOINT, 1);
 	if (SDL_SetRenderDrawBlendMode(
 			gGraphicsDevice.gameWindow.renderer, SDL_BLENDMODE_BLEND) != 0)
 	{
@@ -180,6 +183,8 @@ void DrawRectangle(
 	GraphicsDevice *g, const struct vec2i pos, const struct vec2i size,
 	const color_t color, const bool filled)
 {
+	TextureFlushEx(TEX_FLUSH_DRAW_RECT);
+	VitaProfileDrawCount(VITA_DRAW_CNT_SDL_DRAWRECT, 1);
 	if (SDL_SetRenderDrawBlendMode(
 			g->gameWindow.renderer, SDL_BLENDMODE_BLEND) != 0)
 	{
@@ -203,6 +208,8 @@ void DrawRectangle(
 
 void DrawCross(GraphicsDevice *g, const struct vec2i pos, const color_t c)
 {
+	TextureFlushEx(TEX_FLUSH_DRAW_CROSS);
+	VitaProfileDrawCount(VITA_DRAW_CNT_SDL_DRAWCROSS, 1);
 	if (SDL_SetRenderDrawBlendMode(
 			g->gameWindow.renderer, SDL_BLENDMODE_BLEND) != 0)
 	{

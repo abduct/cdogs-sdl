@@ -67,7 +67,10 @@
 #include "pic_manager.h"
 #include "pickup.h"
 #include "pics.h"
+#include "vita_profile.h"
+#include "particle.h"
 #include "texture.h"
+#include "terrain_cache.h"
 
 // #define DEBUG_DRAW_HITBOXES
 
@@ -122,12 +125,32 @@ static void DrawLOSPic(
 
 static void DrawThing(
 	DrawBuffer *b, const Thing *t, const struct vec2i offset);
+static void ParticleFastDraw(
+	DrawBuffer *b, const Thing *t, const struct vec2i offset);
+
+static void DrawTilesEx(
+	DrawBuffer *b, const struct vec2i offset,
+	void (*drawTileFunc)(
+		DrawBuffer *, const struct vec2i, const Tile *, const struct vec2i,
+		const bool),
+	const int countFloorTiles, const bool blitWallRowCache);
 
 static void DrawTiles(
 	DrawBuffer *b, const struct vec2i offset,
 	void (*drawTileFunc)(
 		DrawBuffer *, const struct vec2i, const Tile *, const struct vec2i,
-		const bool))
+		const bool),
+	const int countFloorTiles)
+{
+	DrawTilesEx(b, offset, drawTileFunc, countFloorTiles, false);
+}
+
+static void DrawTilesEx(
+	DrawBuffer *b, const struct vec2i offset,
+	void (*drawTileFunc)(
+		DrawBuffer *, const struct vec2i, const Tile *, const struct vec2i,
+		const bool),
+	const int countFloorTiles, const bool blitWallRowCache)
 {
 	const bool useFog = ConfigGetBool(&gConfig, "Game.Fog");
 	const Tile **tile = DrawBufferGetFirstTile(b);
@@ -136,17 +159,34 @@ static void DrawTiles(
 	for (y = 0, pos.y = b->dy + offset.y; y < Y_TILES;
 		 y++, pos.y += TILE_HEIGHT)
 	{
+		if (blitWallRowCache)
+		{
+			TerrainCacheBlitWallRow(b, offset, y, pos.y);
+		}
 		CArrayClear(&b->displaylist);
 		for (x = 0, pos.x = b->dx + offset.x; x < b->Size.x;
 			 x++, tile++, pos.x += TILE_WIDTH)
 		{
 			if (*tile == NULL)
 				continue;
+			if (countFloorTiles)
+			{
+				VitaProfileDrawCount(VITA_DRAW_CNT_TILES_CONSIDERED, 1);
+			}
 			drawTileFunc(b, offset, *tile, pos, useFog);
 		}
+		VitaProfileDrawBegin(VITA_DRAW_SORT);
 		DrawBufferSortDisplayList(b);
+		VitaProfileDrawEnd(VITA_DRAW_SORT);
 		CA_FOREACH(const Thing *, tp, b->displaylist)
-		DrawThing(b, *tp, offset);
+		if ((*tp)->kind == KIND_PARTICLE)
+		{
+			ParticleFastDraw(b, *tp, offset);
+		}
+		else
+		{
+			DrawThing(b, *tp, offset);
+		}
 		CA_FOREACH_END()
 		tile += X_TILES - b->Size.x;
 	}
@@ -159,6 +199,9 @@ static void DrawThingsBelow(
 	DrawBuffer *b, const struct vec2i offset, const Tile *t,
 	const struct vec2i pos, const bool useFog);
 static void DrawWallsAndThings(
+	DrawBuffer *b, const struct vec2i offset, const Tile *t,
+	const struct vec2i pos, const bool useFog);
+static void DrawDoorsAndThings(
 	DrawBuffer *b, const struct vec2i offset, const Tile *t,
 	const struct vec2i pos, const bool useFog);
 static void DrawThingsAbove(
@@ -180,21 +223,42 @@ void DrawBufferDraw(
 	DrawBuffer *b, struct vec2i offset, const DrawBufferArgs *args)
 {
 	// First draw the floor tiles (which do not obstruct anything)
-	DrawTiles(b, offset, DrawFloor);
+	VitaProfileDrawBegin(VITA_DRAW_TILES_FLOOR);
+	if (!TerrainCacheDrawFloors(b, offset))
+	{
+		DrawTiles(b, offset, DrawFloor, 1);
+	}
+	VitaProfileDrawEnd(VITA_DRAW_TILES_FLOOR);
 	// Then draw things that are below everything like debris (wrecks)
-	DrawTiles(b, offset, DrawThingsBelow);
+	VitaProfileDrawBegin(VITA_DRAW_TILES_BELOW);
+	DrawTiles(b, offset, DrawThingsBelow, 0);
+	VitaProfileDrawEnd(VITA_DRAW_TILES_BELOW);
 	// Now draw walls and (non-wreck) things in proper order
-	DrawTiles(b, offset, DrawWallsAndThings);
+	VitaProfileDrawBegin(VITA_DRAW_TILES_MAIN);
+	if (TerrainCachePrepareWalls(b))
+	{
+		/* Per-row: blit cached wall band → doors + mid Things (original order). */
+		DrawTilesEx(b, offset, DrawDoorsAndThings, 0, true);
+	}
+	else
+	{
+		DrawTiles(b, offset, DrawWallsAndThings, 0);
+	}
+	VitaProfileDrawEnd(VITA_DRAW_TILES_MAIN);
 	// Draw things that are above everything
-	DrawTiles(b, offset, DrawThingsAbove);
+	VitaProfileDrawBegin(VITA_DRAW_TILES_ABOVE);
+	DrawTiles(b, offset, DrawThingsAbove, 0);
+	VitaProfileDrawEnd(VITA_DRAW_TILES_ABOVE);
 	if (args->HUD)
 	{
+		VitaProfileDrawBegin(VITA_DRAW_WORLD_HUD);
 		// Draw objective highlights, for visible and always-visible objectives
-		DrawTiles(b, offset, DrawObjectiveHighlights);
+		DrawTiles(b, offset, DrawObjectiveHighlights, 0);
 		// Draw actor chatter
-		DrawTiles(b, offset, DrawChatters);
+		DrawTiles(b, offset, DrawChatters, 0);
 		// Draw actor pickup menus
-		DrawTiles(b, offset, DrawPickupMenus);
+		DrawTiles(b, offset, DrawPickupMenus, 0);
+		VitaProfileDrawEnd(VITA_DRAW_WORLD_HUD);
 	}
 	// Draw editor-only things
 	DrawExtra(b, offset, args);
@@ -209,7 +273,15 @@ static void DrawFloor(
 	if (t->Class != NULL && t->Class->Pic != NULL &&
 		t->Class->Pic->Data != NULL && t->Class->Type != TILE_CLASS_WALL)
 	{
-		DrawLOSPic(t, t->Class->Pic, pos, useFog);
+		const color_t mask = GetLOSMask(t, useFog);
+		if (!ColorEquals(mask, colorTransparent))
+		{
+			VitaProfileDrawCount(VITA_DRAW_CNT_FLOOR_PIC, 1);
+			VitaProfileDrawCount(VITA_DRAW_CNT_TILES_DRAWN, 1);
+			PicRender(
+				t->Class->Pic, gGraphicsDevice.gameWindow.renderer, pos, mask,
+				0, svec2_one(), SDL_FLIP_NONE, Rect2iZero());
+		}
 	}
 }
 
@@ -240,20 +312,62 @@ static void DrawWallsAndThings(
 	UNUSED(offset);
 	if (t->Class->Type == TILE_CLASS_WALL)
 	{
-		DrawLOSPic(
-			t, t->Class->Pic, svec2i_add(pos, svec2i(0, WALL_OFFSET_Y)),
-			useFog);
+		const color_t mask = GetLOSMask(t, useFog);
+		if (!ColorEquals(mask, colorTransparent))
+		{
+			VitaProfileDrawCount(VITA_DRAW_CNT_WALL_PIC, 1);
+			VitaProfileDrawCount(VITA_DRAW_CNT_TILES_DRAWN, 1);
+			PicRender(
+				t->Class->Pic, gGraphicsDevice.gameWindow.renderer,
+				svec2i_add(pos, svec2i(0, WALL_OFFSET_Y)), mask, 0, svec2_one(),
+				SDL_FLIP_NONE, Rect2iZero());
+		}
 	}
 	else if (t->Class->Type == TILE_CLASS_DOOR)
 	{
 		const color_t mask = GetLOSMask(t, useFog);
 		if (!ColorEquals(mask, colorTransparent))
 		{
+			VitaProfileDrawCount(VITA_DRAW_CNT_DOOR_DRAW, 1);
+			VitaProfileSetDrawSource(VITA_SRC_DOOR);
 			DoorDraw(&t->Door, pos, mask);
+			VitaProfileSetDrawSource(VITA_SRC_OTHER);
 		}
 	}
 
 	// Draw the items that are in LOS
+	if (t->outOfSight)
+	{
+		return;
+	}
+	CA_FOREACH(ThingId, tid, t->things)
+	const Thing *ti = ThingIdGetThing(tid);
+	if (ThingDrawBelow(ti) || ThingDrawAbove(ti))
+	{
+		continue;
+	}
+	CArrayPushBack(&b->displaylist, &ti);
+	CA_FOREACH_END()
+}
+
+/* Walls come from terrain cache; doors + mid-layer Things stay live. */
+static void DrawDoorsAndThings(
+	DrawBuffer *b, const struct vec2i offset, const Tile *t,
+	const struct vec2i pos, const bool useFog)
+{
+	UNUSED(offset);
+	if (t->Class->Type == TILE_CLASS_DOOR)
+	{
+		const color_t mask = GetLOSMask(t, useFog);
+		if (!ColorEquals(mask, colorTransparent))
+		{
+			VitaProfileDrawCount(VITA_DRAW_CNT_DOOR_DRAW, 1);
+			VitaProfileSetDrawSource(VITA_SRC_DOOR);
+			DoorDraw(&t->Door, pos, mask);
+			VitaProfileSetDrawSource(VITA_SRC_OTHER);
+		}
+	}
+
 	if (t->outOfSight)
 	{
 		return;
@@ -479,6 +593,41 @@ static void DrawPickupMenu(
 
 static void DrawThing(DrawBuffer *b, const Thing *t, const struct vec2i offset)
 {
+	VitaProfileDrawBegin(VITA_DRAW_THINGS);
+	VitaProfileDrawnInc();
+	VitaProfileDrawCount(VITA_DRAW_CNT_THING_DRAW, 1);
+	switch (t->kind)
+	{
+	case KIND_CHARACTER:
+		VitaProfileDrawCount(VITA_DRAW_CNT_ACTOR_PIC, 1);
+		VitaProfileSetDrawSource(VITA_SRC_ACTOR);
+		break;
+	case KIND_PARTICLE:
+		VitaProfileDrawCount(VITA_DRAW_CNT_PARTICLE_PIC, 1);
+		VitaProfileSetDrawSource(VITA_SRC_PARTICLE);
+		{
+			const Particle *pp = CArrayGet(&gParticles, t->id);
+			VitaProfileParticleClassDrawn(pp);
+		}
+		break;
+	case KIND_OBJECT:
+		VitaProfileDrawCount(VITA_DRAW_CNT_OBJECT_PIC, 1);
+		VitaProfileSetDrawSource(VITA_SRC_WORLD_THING);
+		break;
+	case KIND_PICKUP:
+		VitaProfileDrawCount(VITA_DRAW_CNT_PICKUP_PIC, 1);
+		VitaProfileSetDrawSource(VITA_SRC_WORLD_THING);
+		break;
+	case KIND_MOBILEOBJECT:
+		VitaProfileDrawCount(VITA_DRAW_CNT_BULLET_PIC, 1);
+		VitaProfileSetDrawSource(VITA_SRC_WORLD_THING);
+		break;
+	default:
+		VitaProfileDrawCount(VITA_DRAW_CNT_OBJECT_PIC, 1);
+		VitaProfileSetDrawSource(VITA_SRC_WORLD_THING);
+		break;
+	}
+
 	const struct vec2i picPos = svec2i_add(
 		svec2i_subtract(
 			svec2i_floor(svec2_add(t->Pos, t->drawShake)),
@@ -487,6 +636,7 @@ static void DrawThing(DrawBuffer *b, const Thing *t, const struct vec2i offset)
 
 	if (!svec2i_is_zero(t->ShadowSize))
 	{
+		VitaProfileDrawCount(VITA_DRAW_CNT_SHADOW_DRAW, 1);
 		DrawShadow(
 			&gGraphicsDevice, picPos, svec2_assign_vec2i(t->ShadowSize),
 			colorBlack);
@@ -524,6 +674,38 @@ static void DrawThing(DrawBuffer *b, const Thing *t, const struct vec2i offset)
 		svec2i_subtract(picPos, svec2i_scale_divide(t->size, 2)), t->size,
 		color, false);
 #endif
+	VitaProfileSetDrawSource(VITA_SRC_OTHER);
+	VitaProfileDrawEnd(VITA_DRAW_THINGS);
+}
+
+/* KIND_PARTICLE path: same picPos + DrawParticle as DrawThing, same lightweight
+ * profiling counters, but skip ShadowSize / CPicFunc / character branches that
+ * are proven unused for particles. Displaylist order unchanged. */
+static void ParticleFastDraw(
+	DrawBuffer *b, const Thing *t, const struct vec2i offset)
+{
+	VitaProfileDrawBegin(VITA_DRAW_THINGS);
+	VitaProfileDrawnInc();
+	VitaProfileDrawCount(VITA_DRAW_CNT_THING_DRAW, 1);
+	VitaProfileDrawCount(VITA_DRAW_CNT_PARTICLE_PIC, 1);
+	VitaProfileSetDrawSource(VITA_SRC_PARTICLE);
+	{
+		const Particle *pp = CArrayGet(&gParticles, t->id);
+		VitaProfileParticleClassDrawn(pp);
+	}
+
+	const struct vec2i picPos = svec2i_add(
+		svec2i_subtract(
+			svec2i_floor(svec2_add(t->Pos, t->drawShake)),
+			svec2i(b->xTop, b->yTop)),
+		offset);
+
+	VitaProfileParticlePrepareEnter();
+	(*(t->drawFunc))(picPos, &t->drawData);
+	VitaProfileParticlePrepareLeave();
+
+	VitaProfileSetDrawSource(VITA_SRC_OTHER);
+	VitaProfileDrawEnd(VITA_DRAW_THINGS);
 }
 
 static void DrawPickups(

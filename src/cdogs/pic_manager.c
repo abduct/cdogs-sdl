@@ -32,6 +32,7 @@
 
 #include "files.h"
 #include "log.h"
+#include "particle_atlas.h"
 
 #define GRAPHICS_DIR "graphics"
 #define GRAPHICS_HD_DIR "graphics_hd"
@@ -515,10 +516,12 @@ static int ReloadTexture(any_t data, any_t item);
 static int ReloadSpriteTexture(any_t data, any_t item);
 void PicManagerReloadTextures(PicManager *pm)
 {
+	ParticleAtlasDestroy();
 	hashmap_iterate(pm->pics, ReloadTexture, NULL);
 	hashmap_iterate(pm->customPics, ReloadTexture, NULL);
 	hashmap_iterate(pm->sprites, ReloadSpriteTexture, NULL);
 	hashmap_iterate(pm->customSprites, ReloadSpriteTexture, NULL);
+	ParticleAtlasBuild(pm);
 }
 static int ReloadTexture(any_t data, any_t item)
 {

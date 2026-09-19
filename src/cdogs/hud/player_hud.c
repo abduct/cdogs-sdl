@@ -26,6 +26,7 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 #include "player_hud.h"
+#include "vita_profile.h"
 
 #include "actors.h"
 #include "automap.h"
@@ -121,8 +122,12 @@ void DrawPlayerHUD(
 	const TActor *a = GetActor(p);
 	DrawPlayerStatus(
 		hud, p, a, drawFlags, &hud->hudPlayers[hudPlayerIndex], r);
+	VitaProfileHudBegin(VITA_HUD_POPUPS);
 	HUDNumPopupsDrawPlayer(&hud->numPopups, hudPlayerIndex, drawFlags, r);
+	VitaProfileHudEnd(VITA_HUD_POPUPS);
+	VitaProfileHudBegin(VITA_HUD_COMPASS);
 	DrawPlayerObjectiveCompass(hud, a, hudPlayerIndex, numViews);
+	VitaProfileHudEnd(VITA_HUD_COMPASS);
 }
 
 static void DrawPlayerIcon(
@@ -154,6 +159,7 @@ static void DrawPlayerStatus(
 	HUD *hud, const PlayerData *data, const TActor *p, const int flags,
 	const HUDPlayer *h, const Rect2i r)
 {
+	VitaProfileHudBegin(VITA_HUD_STATUS);
 	const color_t mask = data->Char.Colors.Body;
 	SDL_RendererFlip flip = SDL_FLIP_NONE;
 	if (flags & HUDFLAGS_PLACE_RIGHT)
@@ -218,6 +224,7 @@ static void DrawPlayerStatus(
 		strcpy(buf, data->name);
 	}
 	FontStrOpt(buf, svec2i_zero(), opts);
+	VitaProfileHudEnd(VITA_HUD_STATUS);
 
 	if (ConfigGetBool(&gConfig, "Interface.ShowHUDMap") &&
 		!(flags & HUDFLAGS_SHARE_SCREEN) &&
@@ -764,33 +771,27 @@ static void DrawObjectiveCompass(
 
 	// Draw objectives
 	Map *map = &gMap;
-	struct vec2i tilePos;
-	for (tilePos.y = 0; tilePos.y < map->Size.y; tilePos.y++)
+	CA_FOREACH(const ThingId, tid, map->objectiveThings)
+	Thing *ti = ThingIdGetThing(tid);
+	if (!(ti->flags & THING_OBJECTIVE))
 	{
-		for (tilePos.x = 0; tilePos.x < map->Size.x; tilePos.x++)
-		{
-			Tile *tile = MapGetTile(map, tilePos);
-			CA_FOREACH(ThingId, tid, tile->things)
-			Thing *ti = ThingIdGetThing(tid);
-			if (!(ti->flags & THING_OBJECTIVE))
-			{
-				continue;
-			}
-			const int objective = ObjectiveFromThing(ti->flags);
-			const Objective *o =
-				CArrayGet(&gMission.missionData->Objectives, objective);
-			if (o->Flags & OBJECTIVE_HIDDEN)
-			{
-				continue;
-			}
-			if (!(o->Flags & OBJECTIVE_POSKNOWN) && !tile->isVisited)
-			{
-				continue;
-			}
-			DrawCompassArrow(g, r, ti->Pos, playerPos, o->color, NULL);
-			CA_FOREACH_END()
-		}
+		continue;
 	}
+	const int objective = ObjectiveFromThing(ti->flags);
+	const Objective *o =
+		CArrayGet(&gMission.missionData->Objectives, objective);
+	if (o->Flags & OBJECTIVE_HIDDEN)
+	{
+		continue;
+	}
+	const Tile *tile = MapGetTile(map, Vec2ToTile(ti->Pos));
+	if (!(o->Flags & OBJECTIVE_POSKNOWN) &&
+		(tile == NULL || !tile->isVisited))
+	{
+		continue;
+	}
+	DrawCompassArrow(g, r, ti->Pos, playerPos, o->color, NULL);
+	CA_FOREACH_END()
 }
 
 #define COMP_SATURATE_DIST 350

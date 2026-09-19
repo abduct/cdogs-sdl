@@ -113,6 +113,10 @@ typedef struct
 	struct vec2i start;
 	CArray exits; // of Exit
 
+	// Sparse live Things with (flags & THING_OBJECTIVE) != 0.
+	// Maintained from map Thing place/remove + actor objective-flag clear.
+	CArray objectiveThings; // of ThingId
+
 	int NumExplorableTiles;
 } Map;
 
@@ -134,6 +138,10 @@ int MapGetDoorKeycardFlag(Map *map, struct vec2i pos);
 // Return false if cannot move to new position
 bool MapTryMoveThing(Map *map, Thing *t, const struct vec2 pos);
 void MapRemoveThing(Map *map, Thing *t);
+// Drop a Thing from the sparse objective index (idempotent).
+// Required when THING_OBJECTIVE is cleared while the Thing remains on the map
+// (e.g. actor death clears flags before ActorDestroy).
+void MapObjectiveThingRemove(Map *map, const Thing *t);
 
 void MapTerminate(Map *map);
 void MapInit(Map *map, const struct vec2i size);

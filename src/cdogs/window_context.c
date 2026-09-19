@@ -28,6 +28,7 @@
 #include "config.h"
 #include "log.h"
 #include "texture.h"
+#include "vita_profile.h"
 
 bool WindowContextCreate(
 	WindowContext *wc, const Rect2i windowDim, const int windowFlags,
@@ -77,6 +78,8 @@ bool WindowContextInitTextures(
 
 	CArrayInit(&wc->texturesBkg, sizeof(SDL_Texture *));
 	CArrayInit(&wc->textures, sizeof(SDL_Texture *));
+	CArrayInit(&wc->texturesSoftBlit, sizeof(SDL_Texture *));
+	wc->skipSoftBlitComposite = false;
 
 	// Init final presentation texture
 	if (wc->final != NULL)
@@ -132,6 +135,10 @@ void WindowContextDestroyTextures(WindowContext *wc)
 	SDL_DestroyTexture(*t);
 	CA_FOREACH_END()
 	CArrayTerminate(&wc->textures);
+	CA_FOREACH(SDL_Texture *, t, wc->texturesSoftBlit)
+	SDL_DestroyTexture(*t);
+	CA_FOREACH_END()
+	CArrayTerminate(&wc->texturesSoftBlit);
 }
 
 void WindowsAdjustPosition(WindowContext *wc1, WindowContext *wc2)
@@ -149,15 +156,28 @@ void WindowsAdjustPosition(WindowContext *wc1, WindowContext *wc2)
 SDL_Texture *WindowContextCreateTexture(
 	WindowContext *wc, const SDL_TextureAccess texAccess,
 	const struct vec2i res, const SDL_BlendMode blend, const Uint8 alpha,
-	const bool isBkg)
+	const bool isBkg, const bool softBlit)
 {
 	SDL_Texture *t = TextureCreate(wc->renderer, texAccess, res, blend, alpha);
-	CArrayPushBack(isBkg ? &wc->texturesBkg : &wc->textures, &t);
+	if (isBkg)
+	{
+		CArrayPushBack(&wc->texturesBkg, &t);
+	}
+	else if (softBlit)
+	{
+		CArrayPushBack(&wc->texturesSoftBlit, &t);
+	}
+	else
+	{
+		CArrayPushBack(&wc->textures, &t);
+	}
 	return t;
 }
 
 void WindowContextPreRender(WindowContext *wc)
 {
+	TextureFlushEx(TEX_FLUSH_PRE_RENDER);
+	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
 	if (SDL_SetRenderTarget(wc->renderer, wc->final) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "Failed to set final target: %s",
@@ -186,11 +206,25 @@ void WindowContextPreRender(WindowContext *wc)
 
 void WindowContextPostRender(WindowContext *wc)
 {
+	TextureFlushEx(TEX_FLUSH_POST_PRESENT);
 	if (SDL_SetRenderTarget(wc->renderer, wc->final) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "Failed to set final target: %s",
 			SDL_GetError());
 	}
+
+	// Soft-blit layers (screen/hud) are optional: gameplay renders directly
+	// to `final` and leaves them empty/transparent. Skip to avoid uploading
+	// and blending ~1 MiB of useless full-screen textures per frame.
+	if (!wc->skipSoftBlitComposite)
+	{
+		CA_FOREACH(SDL_Texture *, t, wc->texturesSoftBlit)
+		TextureRender(
+			*t, wc->renderer, Rect2iZero(), Rect2iZero(), colorWhite, 0,
+			SDL_FLIP_NONE);
+		CA_FOREACH_END()
+	}
+	wc->skipSoftBlitComposite = false;
 
 	CA_FOREACH(SDL_Texture *, t, wc->textures)
 	TextureRender(
@@ -198,6 +232,8 @@ void WindowContextPostRender(WindowContext *wc)
 		SDL_FLIP_NONE);
 	CA_FOREACH_END()
 
+	TextureFlushEx(TEX_FLUSH_POST_PRESENT);
+	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
 	SDL_SetRenderTarget(wc->renderer, NULL);
 
 	SDL_RenderSetLogicalSize(wc->renderer, 0, 0);

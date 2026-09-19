@@ -250,6 +250,13 @@ void UpdateActorState(TActor *actor, int ticks)
 		actor->dead++;
 		actor->MoveVel = svec2_zero();
 		actor->stateCounter = 4;
+		// THING_OBJECTIVE is cleared while the corpse remains on the map.
+		// Drop from sparse objective index before clearing flags so the
+		// invariant holds until ActorDestroy / MapRemoveThing.
+		if (actor->thing.flags & THING_OBJECTIVE)
+		{
+			MapObjectiveThingRemove(&gMap, &actor->thing);
+		}
 		actor->thing.flags = 0;
 		return;
 	}
@@ -1985,6 +1992,7 @@ void ActorDestroy(TActor *a)
 {
 	CASSERT(a->isInUse, "Destroying in-use actor");
 	CArrayTerminate(&a->ammo);
+	MapObjectiveThingRemove(&gMap, &a->thing);
 	MapRemoveThing(&gMap, &a->thing);
 	// Set PlayerData's ActorUID to -1 to signify actor destruction
 	PlayerData *p = PlayerDataGetByUID(a->PlayerUID);

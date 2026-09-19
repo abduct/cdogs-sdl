@@ -42,6 +42,7 @@
 #include "net_server.h"
 #include "particle.h"
 #include "pickup.h"
+#include "terrain_cache.h"
 #include "thing.h"
 #include "triggers.h"
 
@@ -138,6 +139,7 @@ static void HandleGameEvent(
 				pos.y++;
 			}
 		}
+		TerrainCacheInvalidate();
 	}
 	break;
 	case GAME_EVENT_THING_DAMAGE:
