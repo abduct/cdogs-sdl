@@ -26,8 +26,6 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 #include "player_hud.h"
-#include "vita_profile.h"
-
 #include "actors.h"
 #include "automap.h"
 #include "draw/draw_actor.h"
@@ -122,12 +120,8 @@ void DrawPlayerHUD(
 	const TActor *a = GetActor(p);
 	DrawPlayerStatus(
 		hud, p, a, drawFlags, &hud->hudPlayers[hudPlayerIndex], r);
-	VitaProfileHudBegin(VITA_HUD_POPUPS);
 	HUDNumPopupsDrawPlayer(&hud->numPopups, hudPlayerIndex, drawFlags, r);
-	VitaProfileHudEnd(VITA_HUD_POPUPS);
-	VitaProfileHudBegin(VITA_HUD_COMPASS);
 	DrawPlayerObjectiveCompass(hud, a, hudPlayerIndex, numViews);
-	VitaProfileHudEnd(VITA_HUD_COMPASS);
 }
 
 static void DrawPlayerIcon(
@@ -159,7 +153,6 @@ static void DrawPlayerStatus(
 	HUD *hud, const PlayerData *data, const TActor *p, const int flags,
 	const HUDPlayer *h, const Rect2i r)
 {
-	VitaProfileHudBegin(VITA_HUD_STATUS);
 	const color_t mask = data->Char.Colors.Body;
 	SDL_RendererFlip flip = SDL_FLIP_NONE;
 	if (flags & HUDFLAGS_PLACE_RIGHT)
@@ -224,8 +217,6 @@ static void DrawPlayerStatus(
 		strcpy(buf, data->name);
 	}
 	FontStrOpt(buf, svec2i_zero(), opts);
-	VitaProfileHudEnd(VITA_HUD_STATUS);
-
 	if (ConfigGetBool(&gConfig, "Interface.ShowHUDMap") &&
 		!(flags & HUDFLAGS_SHARE_SCREEN) &&
 		IsAutoMapEnabled(gCampaign.Entry.Mode))

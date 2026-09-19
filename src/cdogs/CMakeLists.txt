@@ -120,9 +120,6 @@ set(CDOGS_SOURCES
 	yajl_utils.c)
 if(VITA)
 	list(APPEND CDOGS_SOURCES vita_net.c)
-	if(CDOGS_VITA_PROFILE)
-		list(APPEND CDOGS_SOURCES vita_profile.c)
-	endif()
 endif()
 set(CDOGS_HEADERS
 	actor_fire.h
@@ -244,7 +241,6 @@ set(CDOGS_HEADERS
 	yajl_utils.h)
 if(VITA)
 	list(APPEND CDOGS_HEADERS vita_net.h)
-	list(APPEND CDOGS_HEADERS vita_profile.h)
 endif()
 
 if(NOT USE_SHARED_ENET)

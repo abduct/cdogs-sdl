@@ -28,7 +28,6 @@
 #include "cpic.h"
 
 #include "blit.h"
-#include "vita_profile.h"
 #include "json_utils.h"
 #include "log.h"
 #include "palette.h"
@@ -301,12 +300,6 @@ void CPicDraw(
 		return;
 	}
 	const struct vec2i picPos = svec2i_add(pos, context->Offset);
-#ifdef CDOGS_PARTICLE_ATLAS
-	if (pic->ownsTex)
-	{
-		VitaProfileDrawCount(VITA_DRAW_CNT_PARTICLE_ATLAS_FALLBACK, 1);
-	}
-#endif
 	PicRender(
 		pic, g->gameWindow.renderer, picPos, ColorMult(p->Mask, context->Mask),
 		context->Radians, context->Scale, context->Flip, Rect2iZero());

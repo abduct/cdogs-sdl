@@ -38,8 +38,6 @@
 #include "config.h"
 #include "log.h"
 #include "texture.h"
-#include "vita_profile.h"
-
 color_t *CharColorGetByType(CharColors *c, const CharColorType t)
 {
 	switch (t)
@@ -199,8 +197,7 @@ void BlitFillBuf(GraphicsDevice *g, const color_t c)
 }
 void BlitUpdateFromBuf(GraphicsDevice *g, SDL_Texture *t)
 {
-	TextureFlushEx(TEX_FLUSH_TEXTURE_UPLOAD);
-	VitaProfileDrawCount(VITA_DRAW_CNT_SDL_UPDATE_TEXTURE, 1);
+	TextureFlush();
 	if (SDL_UpdateTexture(
 			t, NULL, g->buf, g->cachedConfig.Res.x * sizeof(Uint32)) != 0)
 	{

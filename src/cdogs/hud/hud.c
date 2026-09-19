@@ -43,8 +43,6 @@
 #include "pic_manager.h"
 #include "player.h"
 #include "player_hud.h"
-#include "vita_profile.h"
-
 void HUDInit(HUD *hud, GraphicsDevice *device, struct MissionOptions *mission)
 {
 	memset(hud, 0, sizeof *hud);
@@ -128,18 +126,12 @@ static void DrawMissionTime(HUD *hud);
 static void DrawObjectiveCounts(HUD *hud);
 void HUDDraw(HUD *hud, const int numViews, const bool paused)
 {
-	VitaProfileSetDrawSource(VITA_SRC_HUD);
 	if (ConfigGetBool(&gConfig, "Graphics.ShowHUD"))
 	{
 		DrawPlayerAreas(hud, numViews);
 
-		VitaProfileHudBegin(VITA_HUD_DEATHMATCH);
 		DrawDeathmatchScores(hud);
-		VitaProfileHudEnd(VITA_HUD_DEATHMATCH);
-		VitaProfileHudBegin(VITA_HUD_MESSAGE);
 		DrawHUDMessage(hud);
-		VitaProfileHudEnd(VITA_HUD_MESSAGE);
-		VitaProfileHudBegin(VITA_HUD_FPS_CLOCK);
 		if (ConfigGetBool(&gConfig, "Interface.ShowFPS"))
 		{
 			FPSCounterDraw(&hud->fpsCounter);
@@ -148,31 +140,17 @@ void HUDDraw(HUD *hud, const int numViews, const bool paused)
 		{
 			WallClockDraw(&hud->clock);
 		}
-		VitaProfileHudEnd(VITA_HUD_FPS_CLOCK);
-		VitaProfileHudBegin(VITA_HUD_KEYCARDS);
 		DrawKeycards(hud);
-		VitaProfileHudEnd(VITA_HUD_KEYCARDS);
-		VitaProfileHudBegin(VITA_HUD_MISSION_TIME);
 		DrawMissionTime(hud);
-		VitaProfileHudEnd(VITA_HUD_MISSION_TIME);
 		if (HasObjectives(gCampaign.Entry.Mode))
 		{
-			VitaProfileHudBegin(VITA_HUD_OBJECTIVE_COUNTS);
 			DrawObjectiveCounts(hud);
-			VitaProfileHudEnd(VITA_HUD_OBJECTIVE_COUNTS);
 		}
 	}
-	VitaProfileHudBegin(VITA_HUD_PROFILE_OVERLAY);
-	VitaProfileDrawOverlay();
-	VitaProfileHudEnd(VITA_HUD_PROFILE_OVERLAY);
-
 	if (!paused)
 	{
-		VitaProfileHudBegin(VITA_HUD_MISSION_STATE);
 		DrawMissionState(hud);
-		VitaProfileHudEnd(VITA_HUD_MISSION_STATE);
 	}
-	VitaProfileSetDrawSource(VITA_SRC_OTHER);
 }
 
 static void DrawPlayerAreas(HUD *hud, const int numViews)

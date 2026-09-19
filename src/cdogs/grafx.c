@@ -66,7 +66,6 @@
 #include "log.h"
 #include "palette.h"
 #include "texture.h"
-#include "vita_profile.h"
 #include "utils.h"
 
 GraphicsDevice gGraphicsDevice;
@@ -383,8 +382,7 @@ void GraphicsConfigSetFromConfig(GraphicsConfig *gc, Config *c)
 
 void GraphicsSetClip(SDL_Renderer *renderer, const Rect2i r)
 {
-	TextureFlushEx(TEX_FLUSH_CLIP);
-	VitaProfileDrawCount(VITA_DRAW_CNT_CLIP_CHANGE, 1);
+	TextureFlush();
 	const SDL_Rect rect = {r.Pos.x, r.Pos.y, r.Size.x, r.Size.y};
 	if (SDL_RenderSetClipRect(renderer, Rect2iIsZero(r) ? NULL : &rect) != 0)
 	{
@@ -401,8 +399,7 @@ Rect2i GraphicsGetClip(SDL_Renderer *renderer)
 
 void GraphicsResetClip(SDL_Renderer *renderer)
 {
-	TextureFlushEx(TEX_FLUSH_CLIP);
-	VitaProfileDrawCount(VITA_DRAW_CNT_CLIP_CHANGE, 1);
+	TextureFlush();
 	if (SDL_RenderSetClipRect(renderer, NULL) != 0)
 	{
 		LOG(LM_MAIN, LL_ERROR, "Could not reset clip rect: %s",

@@ -35,8 +35,6 @@
 #include <cdogs/log.h>
 #include <cdogs/palette.h>
 #include <cdogs/texture.h>
-#include <cdogs/vita_profile.h>
-
 void DisplayMapItem(const struct vec2i pos, const MapObject *mo)
 {
 	struct vec2i offset;
@@ -146,15 +144,13 @@ void ClearScreen(GraphicsDevice *g)
 	{
 		g->buf[i] = pixel;
 	}
-	TextureFlushEx(TEX_FLUSH_RENDER_TARGET);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
+	TextureFlush();
 	if (SDL_SetRenderTarget(g->gameWindow.renderer, g->bkgTgt) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "cannot set render target: %s", SDL_GetError());
 	}
 	BlitUpdateFromBuf(g, g->bkgTgt);
-	TextureFlushEx(TEX_FLUSH_RENDER_TARGET);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
+	TextureFlush();
 	if (SDL_SetRenderTarget(g->gameWindow.renderer, NULL) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "cannot set render target: %s", SDL_GetError());

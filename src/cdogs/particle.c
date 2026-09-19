@@ -33,8 +33,6 @@
 #include "game_events.h"
 #include "gamedata.h"
 #include "objs.h"
-#include "vita_profile.h"
-
 CArray gParticles;
 #define MAX_PARTICLES 4096
 
@@ -271,7 +269,6 @@ int ParticleAdd(CArray *particles, const AddParticle add)
 	// Find an empty slot in list
 	Particle *p = NULL;
 	int i;
-	int wasAppend = 0;
 	for (i = 0; i < (int)particles->size; i++)
 	{
 		Particle *pSlot = CArrayGet(particles, i);
@@ -289,7 +286,6 @@ int ParticleAdd(CArray *particles, const AddParticle add)
 		CArrayPushBack(particles, &pNew);
 		i = (int)particles->size - 1;
 		p = CArrayGet(particles, i);
-		wasAppend = 1;
 	}
 	memset(p, 0, sizeof *p);
 	p->Class = add.Class;
@@ -341,13 +337,6 @@ int ParticleAdd(CArray *particles, const AddParticle add)
 		p->thing.flags |= THING_DRAW_ABOVE;
 	}
 	p->isAttached = add.IsAttached;
-#if defined(CDOGS_VITA_PROFILE)
-	p->profileDiagId = VitaProfileParticleNextId();
-	/* wasAppend: 1 if CArrayPushBack grew the array; else hole/reuse candidate. */
-	VitaProfileParticleSpawned(i, p, wasAppend);
-#else
-	UNUSED(wasAppend);
-#endif
 	MapTryMoveThing(&gMap, &p->thing, add.Pos);
 	return i;
 }
@@ -358,9 +347,6 @@ void ParticleDestroy(CArray *particles, const int id)
 	{
 		return;
 	}
-#if defined(CDOGS_VITA_PROFILE)
-	VitaProfileParticleRemoved(id, p);
-#endif
 	MapRemoveThing(&gMap, &p->thing);
 	switch (p->Class->Type)
 	{
@@ -391,7 +377,6 @@ static void DrawParticle(const struct vec2i pos, const ThingDrawFuncData *data)
 			return;
 		}
 	}
-	VitaProfileParticleDrawn(p);
 	switch (p->Class->Type)
 	{
 	case PARTICLE_PIC: {

@@ -101,7 +101,6 @@
 #ifdef __VITA__
 #include <psp2/types.h>
 #include <cdogs/vita_net.h>
-#include <cdogs/vita_profile.h>
 #if defined(CDOGS_VITA_GDB)
 #include <uvdb.h>
 #endif
@@ -235,7 +234,6 @@ int main(int argc, char *argv[])
 		LOG(LM_MAIN, LL_WARN,
 			"Vita network init failed; continuing without multiplayer");
 	}
-	VitaProfileInit();
 #if defined(CDOGS_VITA_GDB)
 	/*
 	 * VitaDebugger/libuvdb: networking must already be initialized (uvdb.h).
@@ -374,8 +372,6 @@ bail:
 	NetClientTerminate(&gNetClient);
 	atexit(enet_deinitialize);
 #ifdef __VITA__
-	/* Flush profile CSV before tearing down Vita net / exiting. */
-	VitaProfileTerm();
 	/* Sockets are closed; tear down Vita net after ENet host destroy. */
 	VitaNetTerm();
 #endif

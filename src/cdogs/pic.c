@@ -34,10 +34,7 @@
 #include "log.h"
 #include "texture.h"
 #include "utils.h"
-#include "vita_profile.h"
-
 map_t textureDebugger = NULL;
-
 
 color_t PixelToColor(
 	const SDL_PixelFormat *f, const Uint8 aShift, const Uint32 pixel)
@@ -340,19 +337,10 @@ void PicRender(
 	const double radians, const struct vec2 scale, const SDL_RendererFlip flip,
 	const Rect2i srcRect)
 {
-	VitaProfileDrawBegin(VITA_DRAW_PICRENDER);
-	VitaProfileDrawCount(VITA_DRAW_CNT_PICRENDER, 1);
 	if (p == NULL || p->Tex == NULL)
 	{
-		VitaProfileDrawEnd(VITA_DRAW_PICRENDER);
 		return;
 	}
-#ifdef CDOGS_PARTICLE_ATLAS
-	if (!p->ownsTex)
-	{
-		VitaProfileDrawCount(VITA_DRAW_CNT_PARTICLE_ATLAS_HIT, 1);
-	}
-#endif
 	Rect2i src;
 	const struct vec2i srcSize = PicPixelSize(p);
 	if (Rect2iIsZero(srcRect))
@@ -395,13 +383,5 @@ void PicRender(
 		dest.Size.y = (mint_t)MROUND(src.Size.y * destScale.y);
 	}
 	const double angle = ToDegrees(radians);
-	/* Measure-only: exact axis-aligned dest AABB opportunity. Rotated
-	 * sprites are ineligible (angle!=0) — never counted as would-cull. */
-	if (angle == 0.0)
-	{
-		VitaProfileNoteSpriteDestBounds(
-			dest.Pos.x, dest.Pos.y, dest.Size.x, dest.Size.y);
-	}
 	TextureRender(p->Tex, r, src, dest, mask, angle, flip);
-	VitaProfileDrawEnd(VITA_DRAW_PICRENDER);
 }

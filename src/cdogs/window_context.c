@@ -28,8 +28,6 @@
 #include "config.h"
 #include "log.h"
 #include "texture.h"
-#include "vita_profile.h"
-
 bool WindowContextCreate(
 	WindowContext *wc, const Rect2i windowDim, const int windowFlags,
 	const char *title, SDL_Surface *icon,
@@ -176,8 +174,7 @@ SDL_Texture *WindowContextCreateTexture(
 
 void WindowContextPreRender(WindowContext *wc)
 {
-	TextureFlushEx(TEX_FLUSH_PRE_RENDER);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
+	TextureFlush();
 	if (SDL_SetRenderTarget(wc->renderer, wc->final) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "Failed to set final target: %s",
@@ -206,7 +203,7 @@ void WindowContextPreRender(WindowContext *wc)
 
 void WindowContextPostRender(WindowContext *wc)
 {
-	TextureFlushEx(TEX_FLUSH_POST_PRESENT);
+	TextureFlush();
 	if (SDL_SetRenderTarget(wc->renderer, wc->final) != 0)
 	{
 		LOG(LM_GFX, LL_ERROR, "Failed to set final target: %s",
@@ -232,8 +229,7 @@ void WindowContextPostRender(WindowContext *wc)
 		SDL_FLIP_NONE);
 	CA_FOREACH_END()
 
-	TextureFlushEx(TEX_FLUSH_POST_PRESENT);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
+	TextureFlush();
 	SDL_SetRenderTarget(wc->renderer, NULL);
 
 	SDL_RenderSetLogicalSize(wc->renderer, 0, 0);

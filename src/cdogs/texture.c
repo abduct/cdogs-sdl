@@ -30,8 +30,6 @@
 #include <string.h>
 
 #include "log.h"
-#include "vita_profile.h"
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -99,7 +97,6 @@ static int TextureBatchEnsureDims(SDL_Texture *t)
 	{
 		return 1;
 	}
-	VitaProfileTexQueryInc();
 	int w = 0;
 	int h = 0;
 	if (t == NULL || SDL_QueryTexture(t, NULL, NULL, &w, &h) != 0 || w <= 0 ||
@@ -117,7 +114,7 @@ static int TextureBatchEnsureDims(SDL_Texture *t)
 	return 1;
 }
 
-void TextureFlushEx(TextureFlushReason reason)
+void TextureFlush(void)
 {
 	if (s_batch.quadCount <= 0 || s_batch.renderer == NULL ||
 		s_batch.texture == NULL)
@@ -126,10 +123,7 @@ void TextureFlushEx(TextureFlushReason reason)
 		return;
 	}
 
-	VitaProfileTexFlushBegin();
 	const int quads = s_batch.quadCount;
-	VitaProfileGeomBatchSubmitted((int)reason, quads);
-
 	const int nverts = quads * 4;
 	const int nindices = quads * 6;
 	if (SDL_RenderGeometry(
@@ -140,13 +134,8 @@ void TextureFlushEx(TextureFlushReason reason)
 			SDL_GetError());
 	}
 	s_batch.quadCount = 0;
-	VitaProfileTexFlushEnd();
 }
 
-void TextureFlush(void)
-{
-	TextureFlushEx(TEX_FLUSH_UNCLASSIFIED);
-}
 
 static void TextureBatchResetKey(void)
 {
@@ -199,10 +188,8 @@ static void TextureBatchAppendQuad(
 	const SDL_FRect *dstRect, const color_t mask, const double angle,
 	const SDL_RendererFlip flip)
 {
-	VitaProfileTexAppendBegin();
 	if (!TextureBatchEnsureDims(t))
 	{
-		VitaProfileTexAppendEnd();
 		return;
 	}
 	const int texW = s_batch.texW;
@@ -214,7 +201,6 @@ static void TextureBatchAppendQuad(
 		const SDL_Rect full = {0, 0, texW, texH};
 		if (!SDL_IntersectRect(srcRect, &full, &realSrc))
 		{
-			VitaProfileTexAppendEnd();
 			return;
 		}
 	}
@@ -239,14 +225,14 @@ static void TextureBatchAppendQuad(
 	{
 		if (s_batch.quadCapacity >= TEX_BATCH_MAX_QUADS)
 		{
-			TextureFlushEx(TEX_FLUSH_CAPACITY);
+			TextureFlush();
 		}
 		else
 		{
 			TextureBatchEnsureCapacity(s_batch.quadCount + 1);
 			if (s_batch.quadCount >= s_batch.quadCapacity)
 			{
-				TextureFlushEx(TEX_FLUSH_CAPACITY);
+				TextureFlush();
 			}
 		}
 	}
@@ -255,7 +241,6 @@ static void TextureBatchAppendQuad(
 		TextureBatchEnsureCapacity(TEX_BATCH_INIT_QUADS);
 		if (s_batch.quadCapacity <= 0)
 		{
-			VitaProfileTexAppendEnd();
 			return;
 		}
 	}
@@ -272,7 +257,6 @@ static void TextureBatchAppendQuad(
 	Uint8 effectiveAlpha = mask.a;
 	if (mask.a >= 255)
 	{
-		VitaProfileTexAlphaQueryInc();
 		if (SDL_GetTextureAlphaMod(t, &effectiveAlpha) != 0)
 		{
 			effectiveAlpha = 255;
@@ -382,21 +366,14 @@ static void TextureBatchAppendQuad(
 	idx[5] = base + 3;
 
 	s_batch.quadCount++;
-	VitaProfileNoteQuadSource(VitaProfileGetDrawSource());
-	VitaProfileTexAppendEnd();
 }
 
 void TextureRender(
 	SDL_Texture *t, SDL_Renderer *r, const Rect2i src, const Rect2i dest,
 	const color_t mask, const double angle, const SDL_RendererFlip flip)
 {
-	VitaProfileTexRenderBegin();
-	VitaProfileDrawCount(VITA_DRAW_CNT_TEXTURE_RENDER, 1);
-	VitaProfileParticlePreparePauseForSubmit();
 	if (t == NULL || r == NULL)
 	{
-		VitaProfileParticlePrepareResumeAfterSubmit();
-		VitaProfileTexRenderEnd();
 		return;
 	}
 
@@ -410,22 +387,7 @@ void TextureRender(
 		(s_batch.renderer != r || s_batch.texture != t ||
 		 s_batch.blend != blend))
 	{
-		TextureFlushReason reason = TEX_FLUSH_BLEND_CHANGE;
-		if (s_batch.renderer != r)
-		{
-			reason = TEX_FLUSH_RENDERER_CHANGE;
-			VitaProfileDrawCount(VITA_DRAW_CNT_LOGICAL_RENDERER_SWITCH, 1);
-		}
-		else if (s_batch.texture != t)
-		{
-			reason = TEX_FLUSH_TEXTURE_CHANGE;
-			VitaProfileDrawCount(VITA_DRAW_CNT_LOGICAL_TEX_SWITCH, 1);
-		}
-		else
-		{
-			VitaProfileDrawCount(VITA_DRAW_CNT_LOGICAL_BLEND_SWITCH, 1);
-		}
-		TextureFlushEx(reason);
+		TextureFlush();
 		TextureBatchResetKey();
 	}
 
@@ -451,6 +413,4 @@ void TextureRender(
 	}
 
 	TextureBatchAppendQuad(r, t, srcP, dstP, mask, angle, flip);
-	VitaProfileParticlePrepareResumeAfterSubmit();
-	VitaProfileTexRenderEnd();
 }

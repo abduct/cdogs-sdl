@@ -19,8 +19,6 @@
 #include "texture.h"
 #include "tile_class.h"
 #include "utils.h"
-#include "vita_profile.h"
-
 #define WALL_BLEED (-WALL_OFFSET_Y)
 /* Band tall enough for WALL_OFFSET_Y overhang + typical wall pics (≤48px). */
 #define WALL_ROW_BAND_H (WALL_BLEED + 48)
@@ -154,12 +152,7 @@ static void Rebuild(DrawBuffer *b)
 		return;
 	}
 
-	VitaProfileDrawCount(VITA_DRAW_CNT_TERRAIN_CACHE_REBUILD, 1);
-	VitaProfileCamBegin(VITA_CAM_REBUILD);
-	VitaProfileSetDrawSource(VITA_SRC_TERRAIN);
-	TextureFlushEx(TEX_FLUSH_RENDER_TARGET);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
-
+	TextureFlush();
 	SDL_Texture *prev = SDL_GetRenderTarget(r);
 
 	/* Floor layer — screen-space layout. */
@@ -167,8 +160,6 @@ static void Rebuild(DrawBuffer *b)
 	{
 		LOG(LM_GFX, LL_ERROR, "terrain cache floor target: %s", SDL_GetError());
 		s_tc.valid = false;
-		VitaProfileSetDrawSource(VITA_SRC_OTHER);
-		VitaProfileCamEnd(VITA_CAM_REBUILD);
 		return;
 	}
 	SDL_SetRenderDrawColor(r, 0, 0, 0, 0);
@@ -197,9 +188,7 @@ static void Rebuild(DrawBuffer *b)
 		}
 		tile += X_TILES - b->Size.x;
 	}
-	TextureFlushEx(TEX_FLUSH_RENDER_TARGET);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
-
+	TextureFlush();
 	/*
 	 * Wall ROW ATLAS: each logical tile row owns a band of height
 	 * WALL_ROW_BAND_H. Only that row's TILE_CLASS_WALL Pics are drawn into
@@ -211,8 +200,6 @@ static void Rebuild(DrawBuffer *b)
 		LOG(LM_GFX, LL_ERROR, "terrain cache wall target: %s", SDL_GetError());
 		SDL_SetRenderTarget(r, prev);
 		s_tc.valid = false;
-		VitaProfileSetDrawSource(VITA_SRC_OTHER);
-		VitaProfileCamEnd(VITA_CAM_REBUILD);
 		return;
 	}
 	SDL_SetRenderDrawColor(r, 0, 0, 0, 0);
@@ -241,9 +228,7 @@ static void Rebuild(DrawBuffer *b)
 		}
 		tile += X_TILES - b->Size.x;
 	}
-	TextureFlushEx(TEX_FLUSH_RENDER_TARGET);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RENDER_TARGET_CHANGE, 1);
-
+	TextureFlush();
 	SDL_SetRenderTarget(r, prev);
 
 	s_tc.xStart = b->xStart;
@@ -256,7 +241,6 @@ static void Rebuild(DrawBuffer *b)
 
 static void ApplyFloorLOSOverlays(DrawBuffer *b, const struct vec2i offset)
 {
-	VitaProfileCamBegin(VITA_CAM_FLOOR_LOS);
 	const bool useFog = ConfigGetBool(&gConfig, "Game.Fog");
 	SDL_Renderer *r = gGraphicsDevice.gameWindow.renderer;
 	const Tile **tile = DrawBufferGetFirstTile(b);
@@ -278,16 +262,13 @@ static void ApplyFloorLOSOverlays(DrawBuffer *b, const struct vec2i offset)
 				continue;
 			}
 			const CacheTileLOS los = CacheLOS(t, useFog);
-			VitaProfileSetDrawSource(VITA_SRC_LOS);
-			TextureFlushEx(TEX_FLUSH_TERRAIN_LOS);
+			TextureFlush();
 			if (los == CACHE_LOS_NONE)
 			{
 				SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 				SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
 				const SDL_Rect rect = {pos.x, pos.y, TILE_WIDTH, TILE_HEIGHT};
 				SDL_RenderFillRect(r, &rect);
-				VitaProfileDrawCount(VITA_DRAW_CNT_SDL_FILLRECT, 1);
-				VitaProfileDrawCount(VITA_DRAW_CNT_TERRAIN_LOS_FILLRECT, 1);
 			}
 			else if (los == CACHE_LOS_FOG)
 			{
@@ -296,22 +277,17 @@ static void ApplyFloorLOSOverlays(DrawBuffer *b, const struct vec2i offset)
 					r, colorFog.r, colorFog.g, colorFog.b, 255);
 				const SDL_Rect rect = {pos.x, pos.y, TILE_WIDTH, TILE_HEIGHT};
 				SDL_RenderFillRect(r, &rect);
-				VitaProfileDrawCount(VITA_DRAW_CNT_SDL_FILLRECT, 1);
-				VitaProfileDrawCount(VITA_DRAW_CNT_TERRAIN_LOS_FILLRECT, 1);
 				SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 			}
 		}
 		tile += X_TILES - b->Size.x;
 	}
-	VitaProfileSetDrawSource(VITA_SRC_OTHER);
-	VitaProfileCamEnd(VITA_CAM_FLOOR_LOS);
 }
 
 static void ApplyWallRowLOSOverlays(
 	DrawBuffer *b, const struct vec2i offset, const int row,
 	const int tileScreenY)
 {
-	VitaProfileCamBegin(VITA_CAM_WALL_LOS);
 	const bool useFog = ConfigGetBool(&gConfig, "Game.Fog");
 	SDL_Renderer *r = gGraphicsDevice.gameWindow.renderer;
 	const Tile **tile = DrawBufferGetFirstTile(b);
@@ -335,16 +311,13 @@ static void ApplyWallRowLOSOverlays(
 		const struct vec2i rpos = svec2i_add(pos, svec2i(0, WALL_OFFSET_Y));
 		const struct vec2i rsize =
 			svec2i(TILE_WIDTH, TILE_HEIGHT - WALL_OFFSET_Y);
-		VitaProfileSetDrawSource(VITA_SRC_LOS);
-		TextureFlushEx(TEX_FLUSH_TERRAIN_LOS);
+		TextureFlush();
 		if (los == CACHE_LOS_NONE)
 		{
 			SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 			SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
 			const SDL_Rect rect = {rpos.x, rpos.y, rsize.x, rsize.y};
 			SDL_RenderFillRect(r, &rect);
-				VitaProfileDrawCount(VITA_DRAW_CNT_SDL_FILLRECT, 1);
-				VitaProfileDrawCount(VITA_DRAW_CNT_TERRAIN_LOS_FILLRECT, 1);
 		}
 		else if (los == CACHE_LOS_FOG)
 		{
@@ -352,13 +325,9 @@ static void ApplyWallRowLOSOverlays(
 			SDL_SetRenderDrawColor(r, colorFog.r, colorFog.g, colorFog.b, 255);
 			const SDL_Rect rect = {rpos.x, rpos.y, rsize.x, rsize.y};
 			SDL_RenderFillRect(r, &rect);
-				VitaProfileDrawCount(VITA_DRAW_CNT_SDL_FILLRECT, 1);
-				VitaProfileDrawCount(VITA_DRAW_CNT_TERRAIN_LOS_FILLRECT, 1);
 			SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 		}
 	}
-	VitaProfileSetDrawSource(VITA_SRC_OTHER);
-	VitaProfileCamEnd(VITA_CAM_WALL_LOS);
 }
 
 bool TerrainCacheDrawFloors(DrawBuffer *b, const struct vec2i offset)
@@ -376,17 +345,12 @@ bool TerrainCacheDrawFloors(DrawBuffer *b, const struct vec2i offset)
 		return false;
 	}
 
-	VitaProfileDrawCount(VITA_DRAW_CNT_TERRAIN_CACHE_DRAW, 1);
-	VitaProfileCamBegin(VITA_CAM_FLOOR_CACHE);
-	VitaProfileSetDrawSource(VITA_SRC_TERRAIN);
 	const struct vec2i pos = svec2i(offset.x + b->dx, offset.y + b->dy);
 	TextureRender(
 		s_tc.floorTex, gGraphicsDevice.gameWindow.renderer, Rect2iZero(),
 		Rect2iNew(pos, svec2i(s_tc.texW, s_tc.texH)), colorWhite, 0,
 		SDL_FLIP_NONE);
-	VitaProfileCamEnd(VITA_CAM_FLOOR_CACHE);
 	ApplyFloorLOSOverlays(b, offset);
-	VitaProfileSetDrawSource(VITA_SRC_OTHER);
 	return true;
 }
 
@@ -412,9 +376,6 @@ bool TerrainCacheBlitWallRow(
 		return false;
 	}
 
-	VitaProfileDrawCount(VITA_DRAW_CNT_TERRAIN_WALL_ROW_BLIT, 1);
-	VitaProfileCamBegin(VITA_CAM_WALL_ROW);
-	VitaProfileSetDrawSource(VITA_SRC_TERRAIN);
 	const Rect2i src = Rect2iNew(
 		svec2i(0, row * s_tc.rowBandH), svec2i(s_tc.texW, s_tc.rowBandH));
 	const struct vec2i destPos =
@@ -423,9 +384,7 @@ bool TerrainCacheBlitWallRow(
 		s_tc.wallTex, gGraphicsDevice.gameWindow.renderer, src,
 		Rect2iNew(destPos, svec2i(s_tc.texW, s_tc.rowBandH)), colorWhite, 0,
 		SDL_FLIP_NONE);
-	VitaProfileCamEnd(VITA_CAM_WALL_ROW);
 	ApplyWallRowLOSOverlays(b, offset, row, tileScreenY);
-	VitaProfileSetDrawSource(VITA_SRC_OTHER);
 	return true;
 }
 

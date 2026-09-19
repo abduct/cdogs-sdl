@@ -47,8 +47,6 @@
 	POSSIBILITY OF SUCH DAMAGE.
 */
 #include "automap.h"
-#include "vita_profile.h"
-
 #include <stdio.h>
 #include <string.h>
 
@@ -72,9 +70,6 @@ color_t colorWall = {72, 152, 72, 255};
 color_t colorFloor = {12, 92, 12, 255};
 color_t colorRoom = {24, 112, 24, 255};
 color_t colorExit = {255, 255, 255, 255};
-
-/* 1 while inside AutomapDrawRegion (HUD radar); counters only then. */
-static int s_automapHudRadar;
 
 static void DisplayPlayer(
 	SDL_Renderer *renderer, const TActor *player, struct vec2i pos,
@@ -120,10 +115,6 @@ static void DisplayExits(
 	CA_FOREACH(const Exit, e, m->exits)
 	if (e->Hidden)
 		continue;
-	if (s_automapHudRadar)
-	{
-		VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_EXIT_MARKERS, 1);
-	}
 	const struct vec2i exitPos =
 		svec2i_add(svec2i_scale(e->R.Pos, (float)scale), pos);
 	const struct vec2i exitSize = svec2i_scale(e->R.Size, (float)scale);
@@ -219,18 +210,10 @@ static void DrawMap(
 		{
 			for (x = tileX0; x < tileX1; x++)
 			{
-				if (s_automapHudRadar)
-				{
-					VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_TILES_ITERATED, 1);
-				}
 				Tile *tile = MapGetTile(map, svec2i(x, y));
 				if (tile->Class->Pic != NULL &&
 					(tile->isVisited || (flags & AUTOMAP_FLAGS_SHOWALL)))
 				{
-					if (s_automapHudRadar)
-					{
-						VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_TILES_VISITED, 1);
-					}
 					int j;
 					for (j = 0; j < scale; j++)
 					{
@@ -289,16 +272,8 @@ static void DrawObjectivesAndKeys(
 	{
 		for (int x = tileX0; x < tileX1; x++)
 		{
-			if (s_automapHudRadar)
-			{
-				VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_TILES_SCANNED, 1);
-			}
 			Tile *tile = MapGetTile(map, svec2i(x, y));
 			CA_FOREACH(ThingId, tid, tile->things)
-			if (s_automapHudRadar)
-			{
-				VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_THINGS_INSPECTED, 1);
-			}
 			DrawThing(ThingIdGetThing(tid), tile, pos, scale, flags);
 			CA_FOREACH_END()
 		}
@@ -316,10 +291,6 @@ static void DrawThing(
 			if ((o->Flags & OBJECTIVE_POSKNOWN) || tile->isVisited ||
 				(flags & AUTOMAP_FLAGS_SHOWALL))
 			{
-				if (s_automapHudRadar)
-				{
-					VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_MARKERS_DRAWN, 1);
-				}
 				DisplayObjective(t, obj, pos, scale, flags);
 			}
 		}
@@ -331,10 +302,6 @@ static void DrawThing(
 		if (keyFlags != 0)
 		{
 			const color_t dotColor = KeyColor(keyFlags);
-			if (s_automapHudRadar)
-			{
-				VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_OBJ_MARKERS_DRAWN, 1);
-			}
 			DrawDot(t, dotColor, pos, scale);
 		}
 	}
@@ -394,10 +361,6 @@ void AutomapDrawRegion(
 	const struct vec2i size, const struct vec2i mapCenter, const int flags,
 	const bool showExit)
 {
-	s_automapHudRadar = 1;
-	VitaProfileHudBegin(VITA_HUD_RADAR);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_CALLS, 1);
-	VitaProfileSetDrawSource(VITA_SRC_RADAR);
 	const int scale = 1;
 	const Rect2i oldClip = GraphicsGetClip(renderer);
 	GraphicsSetClip(renderer, Rect2iNew(pos, size));
@@ -430,35 +393,23 @@ void AutomapDrawRegion(
 		tileY1 = map->Size.y;
 	}
 
-	VitaProfileHudBegin(VITA_HUD_RADAR_DRAWMAP);
 	DrawMap(map, pos, mapCenter, size, scale, flags, tileX0, tileY0, tileX1,
 		tileY1);
-	VitaProfileHudEnd(VITA_HUD_RADAR_DRAWMAP);
 	const struct vec2i centerOn =
 		svec2i_add(pos, svec2i_scale(mapCenter, (float)-scale));
-	VitaProfileHudBegin(VITA_HUD_RADAR_PLAYERS);
 	CA_FOREACH(const PlayerData, p, gPlayerDatas)
 	if (!IsPlayerAlive(p))
 	{
 		continue;
 	}
 	const TActor *player = ActorGetByUID(p->ActorUID);
-	VitaProfileDrawCount(VITA_DRAW_CNT_RADAR_PLAYER_MARKERS, 1);
 	DisplayPlayer(renderer, player, centerOn, scale);
 	CA_FOREACH_END()
-	VitaProfileHudEnd(VITA_HUD_RADAR_PLAYERS);
-	VitaProfileHudBegin(VITA_HUD_RADAR_OBJECTIVES);
 	DrawObjectivesAndKeys(
 		&gMap, centerOn, scale, flags, tileX0, tileY0, tileX1, tileY1);
-	VitaProfileHudEnd(VITA_HUD_RADAR_OBJECTIVES);
 	if (showExit)
 	{
-		VitaProfileHudBegin(VITA_HUD_RADAR_EXITS);
 		DisplayExits(map, centerOn, scale, flags);
-		VitaProfileHudEnd(VITA_HUD_RADAR_EXITS);
 	}
 	GraphicsSetClip(renderer, oldClip);
-	VitaProfileSetDrawSource(VITA_SRC_HUD);
-	VitaProfileHudEnd(VITA_HUD_RADAR);
-	s_automapHudRadar = 0;
 }
